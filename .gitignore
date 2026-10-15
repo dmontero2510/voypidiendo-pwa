@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+*.user
+appsettings.Development.json
+*.pfx
+*.keystore
+.venv-certificando/
+dist/
+VB6-VOYCERTIFICANDO/
+VOYCERTIFICANDO-PYTHON/
+appsettings.Production.json

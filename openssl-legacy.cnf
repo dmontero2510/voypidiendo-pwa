@@ -1,0 +1,23 @@
+openssl_conf = voypidiendo_init
+config_diagnostics = 1
+
+[voypidiendo_init]
+providers = voypidiendo_providers
+ssl_conf = voypidiendo_ssl
+
+[voypidiendo_providers]
+default = voypidiendo_default
+legacy = voypidiendo_legacy
+
+[voypidiendo_default]
+activate = 1
+
+[voypidiendo_legacy]
+activate = 1
+
+[voypidiendo_ssl]
+system_default = voypidiendo_tls
+
+[voypidiendo_tls]
+MinProtocol = TLSv1
+CipherString = DEFAULT:@SECLEVEL=0

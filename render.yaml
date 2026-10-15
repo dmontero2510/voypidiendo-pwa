@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: voypidiendo-pwa
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: ConnectionStrings__Tenant_demo
+        sync: false
+      - key: Security__ApiKey
+        generateValue: true
+      - key: Jwt__Key
+        generateValue: true
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"

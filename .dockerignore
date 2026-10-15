@@ -1,0 +1,7 @@
+**/bin
+**/obj
+.git
+.venv-certificando
+dist
+VB6-VOYCERTIFICANDO
+VOYCERTIFICANDO-PYTHON

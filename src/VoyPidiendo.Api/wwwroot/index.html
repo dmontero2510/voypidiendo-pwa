@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#20b3df">
+  <title>Voy Pidiendo</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="search-results.css?v=4">
+  <link rel="stylesheet" href="admin.css?v=8">
+  <link rel="stylesheet" href="voyllegando-theme.css?v=9">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="brand-heading"><img id="tenantLogo" class="tenant-logo" src="/icons/icon.svg" alt=""><div><span id="appSubtitle" class="eyebrow">TOMA DE PEDIDOS</span><h1 id="appTitle">Voy Pidiendo</h1></div></div>
+      <button id="syncButton" class="secondary">↻ Sincronizar</button>
+    </header>
+
+    <section id="connectionCard" class="card connection">
+      <div id="loginPanel">
+        <h2>Ingresar</h2>
+        <div class="row">
+          <label>Usuario<input id="loginUser" autocomplete="username" placeholder="Usuario"></label>
+          <label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña"></label>
+          <button id="loginButton">Ingresar</button>
+        </div>
+      </div>
+      <div id="sessionPanel" hidden class="section-title">
+        <strong id="sessionUser"></strong>
+        <div class="session-actions"><button id="showClientLocations" class="secondary">📍 Clientes</button><button id="logoutButton" class="secondary">Cerrar sesión</button></div>
+      </div>
+      <p id="status" class="muted">Ingresá con tu usuario y contraseña.</p>
+    </section>
+
+    <section id="clientLocations" class="card" hidden>
+      <div class="section-title"><h2>Ubicaciones de clientes</h2><button id="backClientLocations" class="secondary">← Volver</button></div>
+      <p class="muted">Busque un cliente, marque su ubicación en el mapa y presione Guardar ubicación.</p>
+      <div class="client-location-tools">
+        <div class="dashboard-client-picker"><label>Cliente<input id="locationClientSearch" autocomplete="off" placeholder="Código o nombre"></label><div id="locationClientResults" class="product-results"></div></div>
+        <div class="location-coordinates"><span id="locationCoordinates">Haga clic en el mapa para colocar el pin.</span><button id="saveClientLocation" disabled>Guardar ubicación</button></div>
+      </div>
+      <div id="clientLocationsMap" class="tracking-map client-locations-map"></div>
+    </section>
+
+    <section id="adminMenu" class="card" hidden>
+      <h2>Panel de administración</h2>
+      <div class="admin-menu-grid">
+        <button id="showUsers" class="admin-menu-button"><span>👥</span><strong>Usuarios</strong><small>Vendedores y accesos</small></button>
+        <button id="showTracking" class="admin-menu-button"><span>📍</span><strong>Seguimiento</strong><small>Recorridos y ubicaciones</small></button>
+        <button id="showOrders" class="admin-menu-button"><span>📋</span><strong>Consulta de pedidos</strong><small>Situación y totales</small></button>
+        <button id="showDashboard" class="admin-menu-button"><span>📊</span><strong>Pedidos</strong><small>Ventas y cantidades</small></button>
+        <button id="showSalesDashboard" class="admin-menu-button"><span>💹</span><strong>Ventas facturadas</strong><small>Facturas y devoluciones</small></button>
+        <button id="showAnnualDashboard" class="admin-menu-button"><span>📅</span><strong>Ventas Anuales (Cantidades)</strong><small>Comparativo mensual</small></button>
+        <button id="showAnnualMoneyDashboard" class="admin-menu-button"><span>💰</span><strong>Ventas Anuales (Pesos $)</strong><small>Comparativo mensual en pesos</small></button>
+      </div>
+    </section>
+
+    <section id="adminUsers" class="card" hidden>
+      <div class="section-title"><h2>Usuarios</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="title-settings">
+        <h3>Títulos de la aplicación</h3>
+        <div class="filters">
+          <label>Título principal<input id="settingsTitle" maxlength="50" placeholder="Voy Pidiendo"></label>
+          <label class="grow">Subtítulo<input id="settingsSubtitle" maxlength="150" placeholder="TOMA DE PEDIDOS"></label>
+          <button id="saveAppTitle">Guardar títulos</button>
+        </div>
+      </div>
+      <div class="filters">
+        <label>Usuario<input id="newUsername" maxlength="50" placeholder="Ej.: jperez"></label>
+        <label class="grow">Nombre<input id="newName" maxlength="100" placeholder="Nombre del vendedor"></label>
+        <label>Contraseña inicial<input id="newPassword" type="password" minlength="6"></label>
+        <label>Rol<select id="newRole"><option value="V">Vendedor</option><option value="P">Consulta Pedidos</option><option value="S">Consulta Ventas</option><option value="Q">Consultas completas</option><option value="A">Administrador</option></select></label>
+        <button id="createUser">Crear</button>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>COD_VEND</th><th>Estado</th><th></th></tr></thead><tbody id="usersList"></tbody></table>
+      </div>
+    </section>
+
+    <section id="adminTracking" class="card" hidden>
+      <div class="section-title"><h2>Seguimiento</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="filters">
+        <label>Desde<input id="trackingFrom" type="date"></label>
+        <label>Hasta<input id="trackingTo" type="date"></label>
+        <button id="refreshTracking">Actualizar</button>
+      </div>
+      <div class="tracking-kpis"><div><span>En comercio</span><strong id="trackingActive">0</strong></div><div><span>Visitas</span><strong id="trackingCount">0</strong></div><div><span>Promedio</span><strong id="trackingAverage">0 min</strong></div></div>
+      <div id="trackingMap" class="tracking-map"></div>
+      <div class="table-wrap"><table><thead><tr><th>Vendedor</th><th>Cliente</th><th>Zona</th><th>Llegada</th><th>Salida</th><th>Tiempo</th></tr></thead><tbody id="trackingList"></tbody></table></div>
+    </section>
+
+    <section id="adminOrders" class="card" hidden>
+      <div class="section-title"><h2>Consulta de pedidos</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="filters">
+        <label>Desde<input id="ordersFrom" type="date"></label>
+        <label>Hasta<input id="ordersTo" type="date"></label>
+        <label>Zona<select id="ordersZone"><option value="">Todas</option></select></label>
+        <label>Vendedor<select id="ordersSeller"><option value="">Todos</option></select></label>
+        <div class="dashboard-client-picker"><label>Cliente<input id="ordersClient" autocomplete="off" placeholder="Código o nombre"></label><div id="ordersClientResults" class="product-results"></div></div>
+        <label>Por página<select id="ordersLimit"><option value="10">10 pedidos</option><option value="25" selected>25 pedidos</option><option value="50">50 pedidos</option></select></label>
+        <button id="searchOrders">Consultar</button>
+      </div>
+      <div class="table-wrap orders-table-wrap">
+        <table class="orders-table"><thead><tr><th>Fecha</th><th>Org.</th><th>Pedido</th><th>Factura</th><th>Cliente</th><th>Tipo</th><th>Usuario</th><th>Total</th><th></th></tr></thead><tbody id="ordersList"></tbody></table>
+      </div>
+      <div class="orders-pagination"><button id="ordersPrevious" class="secondary" aria-label="Página anterior" title="Página anterior">‹</button><span id="ordersPage">1 / 1</span><button id="ordersNext" class="secondary" aria-label="Página siguiente" title="Página siguiente">›</button></div>
+      <div class="total orders-page-total"><span>Total página</span><strong id="ordersTotal">$ 0,00</strong></div>
+      <div id="orderDetail" hidden></div>
+    </section>
+
+    <section id="adminDashboard" class="card" hidden>
+      <div class="section-title"><h2>Pedidos</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="filters">
+        <label>Desde<input id="dashboardFrom" type="date"></label>
+        <label>Hasta<input id="dashboardTo" type="date"></label>
+        <label>Zona<select id="dashboardZone"><option value="">Todas</option></select></label>
+        <div class="dashboard-client-picker"><label>Cliente<input id="dashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="dashboardClientResults" class="product-results"></div></div>
+        <button id="refreshDashboard">Actualizar</button>
+      </div>
+      <div class="dashboard-tabs">
+        <button id="dashboardMoneyTab" class="secondary is-active">Ventas ($)</button>
+        <button id="dashboardPercentTab" class="secondary">% Participación</button>
+        <button id="dashboardQuantityTab" class="secondary">Cantidades por artículo</button>
+        <label class="dashboard-inline-filter">Rubro<select id="dashboardCategory"><option value="">Todos</option></select></label>
+        <label class="dashboard-inline-filter">Marca<select id="dashboardBrand"><option value="">Todas</option></select></label>
+        <label class="dashboard-seller-filter">Vendedor<select id="dashboardSeller"><option value="">Todos</option></select></label>
+      </div>
+      <div id="dashboardMoney">
+        <div class="dashboard-kpis">
+          <div><span>Venta total</span><strong id="kpiSales">$ 0</strong></div>
+          <div><span>Pedidos</span><strong id="kpiOrders">0</strong></div>
+          <div><span>Clientes</span><strong id="kpiClients">0</strong></div>
+          <div><span>Ticket promedio</span><strong id="kpiTicket">$ 0</strong></div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="dashboard-chart wide-chart"><h3>Evolución de ventas</h3><div id="salesTrend"></div></div>
+          <div class="dashboard-chart"><h3>Frío / Sin frío</h3><div id="coldChart" class="donut-layout"></div></div>
+          <div class="dashboard-chart"><h3>Ventas por vendedor</h3><div id="sellerChart"></div></div>
+          <div class="dashboard-chart"><h3>Ventas por rubro</h3><div id="categoryChart"></div></div>
+          <div class="dashboard-chart"><h3>Ventas por marca</h3><div id="brandChart"></div></div>
+          <div class="dashboard-chart"><h3>Principales clientes</h3><div id="clientChart"></div></div>
+          <div class="dashboard-chart"><h3>Ventas por artículo</h3><div id="articleAmountChart"></div></div>
+        </div>
+      </div>
+      <div id="dashboardPercent" hidden>
+        <p class="muted">Participación sobre el importe vendido con los filtros seleccionados.</p>
+        <div class="participation-grid">
+          <div class="dashboard-chart"><h3>Participación por zona</h3><div id="zonePercentChart" class="pie-layout"></div></div>
+          <div class="dashboard-chart"><h3>Participación por rubro</h3><div id="categoryPercentChart" class="pie-layout"></div></div>
+          <div class="dashboard-chart"><h3>Participación por marca</h3><div id="brandPercentChart" class="pie-layout"></div></div>
+          <div class="dashboard-chart"><h3>Participación por cliente</h3><div id="clientPercentChart" class="pie-layout"></div></div>
+        </div>
+      </div>
+      <div id="dashboardQuantity" hidden>
+        <div class="dashboard-chart"><h3>Unidades por artículo</h3><p class="muted">Ranking por cantidad, independientemente del precio.</p><div id="articleQuantityChart"></div></div>
+      </div>
+    </section>
+
+    <section id="adminSalesDashboard" class="card" hidden>
+      <div class="section-title"><h2>Dashboard de ventas</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="filters">
+        <label>Desde<input id="salesDashboardFrom" type="date"></label>
+        <label>Hasta<input id="salesDashboardTo" type="date"></label>
+        <label>Zona<select id="salesDashboardZone"><option value="">Todas</option></select></label>
+        <div class="dashboard-client-picker"><label>Cliente<input id="salesDashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="salesDashboardClientResults" class="product-results"></div></div>
+        <label>Vista<select id="salesDashboardOption"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></label>
+        <button id="refreshSalesDashboard">Actualizar</button>
+      </div>
+      <div class="filters billing-product-filters">
+        <label>Marca<select id="salesDashboardBrand"><option value="">Todas</option></select></label>
+        <label>Rubro<select id="salesDashboardCategory"><option value="">Todos</option></select></label>
+        <div class="dashboard-client-picker"><label>Artículo<input id="salesDashboardArticle" autocomplete="off" placeholder="Código o descripción"></label><div id="salesDashboardArticleResults" class="product-results"></div></div>
+      </div>
+      <div class="dashboard-kpis">
+        <div><span>Venta neta</span><strong id="salesKpiNet">$ 0</strong></div>
+        <div><span>Ventas</span><strong id="salesKpiGross">$ 0</strong></div>
+        <div><span>Devoluciones</span><strong id="salesKpiReturns">$ 0</strong></div>
+        <div><span>Comprobantes</span><strong id="salesKpiDocuments">0</strong></div>
+        <div><span>Clientes</span><strong id="salesKpiClients">0</strong></div>
+        <div><span>Ticket promedio</span><strong id="salesKpiTicket">$ 0</strong></div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="dashboard-chart wide-chart"><h3>Evolución de venta neta</h3><div id="invoiceSalesTrend"></div></div>
+        <div class="dashboard-chart"><h3>Por marca</h3><div id="invoiceBrandChart"></div></div>
+        <div class="dashboard-chart"><h3>Por rubro ($)</h3><div id="invoiceCategoryChart"></div></div>
+        <div class="dashboard-chart"><h3>Artículos por importe</h3><div id="invoiceArticleAmountChart"></div></div>
+        <div class="dashboard-chart"><h3>Artículos por cantidad</h3><div id="invoiceArticleQuantityChart"></div></div>
+        <div class="dashboard-chart wide-chart"><h3>Principales clientes</h3><div id="invoiceClientChart"></div></div>
+      </div>
+    </section>
+
+    <section id="adminAnnualDashboard" class="card" hidden>
+      <div class="section-title"><h2 id="annualDashboardTitle">Ventas Anuales (Cantidades)</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="filters">
+        <label>Año<select id="annualDashboardYear"></select></label>
+        <label>Zona<select id="annualDashboardZone"><option value="">Todas</option></select></label>
+        <div class="dashboard-client-picker"><label>Cliente<input id="annualDashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="annualDashboardClientResults" class="product-results"></div></div>
+        <label>Vista<select id="annualDashboardOption"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></label>
+        <label>Mostrar<select id="annualDashboardLimit"><option>10</option><option selected>20</option><option>40</option><option>50</option><option>100</option></select></label>
+        <button id="refreshAnnualDashboard">Actualizar</button>
+      </div>
+      <div class="filters billing-product-filters">
+        <label>Marca<select id="annualDashboardBrand"><option value="">Todas</option></select></label>
+        <label>Rubro<select id="annualDashboardCategory"><option value="">Todos</option></select></label>
+        <div class="dashboard-client-picker"><label>Artículo<input id="annualDashboardArticle" autocomplete="off" placeholder="Código o descripción"></label><div id="annualDashboardArticleResults" class="product-results"></div></div>
+      </div>
+      <div class="dashboard-chart"><h3>Evolución mensual de ventas netas</h3><div id="annualSalesTrend"></div></div>
+      <div class="annual-dashboard-tables">
+        <div><h3 id="annualBrandTitle">Por marca (cantidades)</h3><div class="table-wrap annual-table-wrap"><table><thead class="annual-table-head"></thead><tbody id="annualBrandTable"></tbody></table></div></div>
+        <div><h3 id="annualCategoryTitle">Por rubro (cantidades)</h3><div class="table-wrap annual-table-wrap"><table><thead class="annual-table-head"></thead><tbody id="annualCategoryTable"></tbody></table></div></div>
+        <div><h3 id="annualArticleTitle">Por artículo (cantidades)</h3><div class="table-wrap annual-table-wrap"><table><thead class="annual-table-head"></thead><tbody id="annualArticleTable"></tbody></table></div></div>
+        <div><h3 id="annualClientTitle">Por cliente (cantidades)</h3><div class="table-wrap annual-table-wrap"><table><thead class="annual-table-head"></thead><tbody id="annualClientTable"></tbody></table></div></div>
+      </div>
+    </section>
+
+    <div id="sellerOrder" hidden>
+    <section class="card visit-panel">
+      <div><span class="label">PEDIDOS / VISITA</span><strong id="visitStatus">Listo para comenzar</strong><small id="visitTime"></small></div>
+      <div class="visit-actions"><button id="sellerOrders" class="secondary">Mis pedidos</button><button id="visitArrival">Comenzar pedido</button><button id="visitDeparture" class="finish-visit" hidden>Finalizar pedidos / visita</button></div>
+    </section>
+    <section id="orderHeader" class="card order-header" hidden>
+      <div class="client-search-block">
+        <div class="filters"><label class="grow">Buscar cliente por código o nombre<input id="clientSearch" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Ej.: 125 o Juan Pérez"></label></div>
+        <select id="client" hidden><option value="">Seleccionar cliente…</option></select>
+        <div id="clientResults" class="product-results client-results"></div>
+      </div>
+      <div class="order-header-meta">
+        <select id="zone" hidden><option value="">Todas las zonas</option></select>
+        <label class="budget-header">Tope del cliente<input id="budget" type="text" inputmode="decimal" placeholder="$ 0,00"></label>
+        <label class="switch"><input id="cold" type="checkbox"><span>Frío</span></label>
+        <label class="switch"><input id="multipleLoad" type="checkbox" checked><span>Carga múltiple</span></label>
+        <div><span class="label">Fecha</span><strong id="orderDate"></strong></div>
+        <span id="orderHeaderLock" class="header-lock" hidden>🔒 Datos fijos mientras haya artículos</span>
+      </div>
+    </section>
+
+    <section class="card product-panel order-work" hidden>
+      <div id="singleLoadPanel" hidden>
+        <div class="filters">
+          <label class="grow">Buscar artículo por código o descripción<input id="productSearch" type="search" name="buscar_articulo_actual" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Ej.: 125 o Coca Cola lata"></label>
+          <select id="product" hidden><option value="">Seleccionar artículo…</option></select>
+        </div>
+        <div id="productResults" class="product-results"></div>
+        <div class="selected-product-row">
+          <div id="productInfo" class="product-info muted">Seleccione un artículo.</div>
+          <div id="selectedProductActions" class="quantity-row" hidden>
+            <button id="minus" class="quantity-button">−</button>
+            <input id="quantity" type="number" min="0" step="0.5" value="1">
+            <button id="plus" class="quantity-button">+</button>
+            <button id="add">Agregar</button>
+          </div>
+        </div>
+      </div>
+      <div id="multipleLoadPanel">
+        <label>Buscar artículos por código o descripción<input id="multipleProductSearch" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Ej.: 125 o Coca Cola lata"></label>
+        <div id="multipleProductResults" class="multiple-product-results"></div>
+        <div class="multiple-load-footer">
+          <strong id="multipleSelectedCount">0 artículos seleccionados</strong>
+          <button id="addMultipleProducts" disabled>Agregar seleccionados</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card order-work" hidden>
+      <div class="section-title"><h2>Detalle</h2><span id="lineCount" class="pill">0 artículos</span></div>
+      <div class="table-wrap">
+        <table class="cart-table"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Precio</th><th>Importe</th><th></th></tr></thead><tbody id="lines"></tbody></table>
+      </div>
+      <div id="emptyCart" class="empty">Todavía no agregaste artículos.</div>
+    </section>
+
+    <section class="summary-grid order-work" hidden>
+      <div class="card">
+        <label>Observación<input id="observation" maxlength="50" placeholder="Opcional"></label>
+      </div>
+      <div class="card total-card">
+        <div class="total"><span>Total</span><strong id="total">$ 0,00</strong></div>
+        <div id="perceptionNote" class="perception-note"></div>
+        <div id="budgetStatus" class="budget-status"></div>
+        <div class="order-actions"><button id="cancelOrder" class="cancel-order">Anular pedido</button><button id="send" class="send">Grabar pedido</button></div>
+      </div>
+    </section>
+    </div>
+  </main>
+  <dialog id="appDialog" class="app-dialog">
+    <h2>VoyPidiendo</h2>
+    <p id="appDialogMessage"></p>
+    <div class="app-dialog-actions"><button id="appDialogCancel" class="secondary">Cancelar</button><button id="appDialogAccept">Aceptar</button></div>
+  </dialog>
+  <dialog id="editLineDialog" class="app-dialog edit-line-dialog">
+    <h2>Editar artículo</h2>
+    <label>Descripción<input id="editLineDescription" maxlength="255"></label>
+    <label>Cantidad<input id="editLineQuantity" type="number" min="0.01" step="0.5" inputmode="decimal"></label>
+    <div class="edit-line-price"><span>Precio unitario</span><strong id="editLinePrice"></strong></div>
+    <div class="app-dialog-actions"><button id="editLineCancel" class="secondary">Cancelar</button><button id="editLineSave">Guardar</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <div id="queryBusy" class="query-busy" hidden><div class="query-busy-box"><span class="query-spinner"></span><strong>Ejecutando consulta…</strong><small>Espere, puede demorar unos segundos.</small></div></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js?v=47"></script>
+</body>
+</html>

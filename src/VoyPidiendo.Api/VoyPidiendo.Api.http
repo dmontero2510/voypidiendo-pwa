@@ -1,0 +1,20 @@
+@host = https://localhost:7180
+@key = CAMBIAR
+
+GET {{host}}/api/sync
+X-Api-Key: {{key}}
+
+###
+POST {{host}}/api/pedidos
+X-Api-Key: {{key}}
+Content-Type: application/json
+
+{
+  "organizacion": 1,
+  "clienteCodigo": 1,
+  "fecha": "2026-08-29T12:00:00-03:00",
+  "frio": false,
+  "observacion": "Entrega por la tarde",
+  "usuario": "APP_NAM",
+  "items": [{ "productoCodigo": 1, "descripcion": "COCA COLA LATA 6X354", "cantidad": 2, "precio": 9390, "alic": 21 }]
+}
