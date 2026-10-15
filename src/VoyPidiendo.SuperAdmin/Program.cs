@@ -28,7 +28,8 @@ app.UseAuthorization();
 app.MapGet("/api/setup/status", async (CentralRepository db, CancellationToken ct) => Results.Ok(new { requiereConfiguracion = await db.UserCountAsync(ct) == 0 })).AllowAnonymous();
 app.MapPost("/api/setup", async (BootstrapRequest request, IConfiguration config, CentralRepository db, CancellationToken ct) =>
 {
-    if (request.ClaveInicial != config["Security:BootstrapKey"]) return Results.Unauthorized();
+    if (request.ClaveInicial != config["Security:BootstrapKey"])
+        return Results.Json(new { mensaje = "La clave inicial del sistema no es correcta." }, statusCode: StatusCodes.Status401Unauthorized);
     if (string.IsNullOrWhiteSpace(request.Usuario) || string.IsNullOrWhiteSpace(request.Nombre) || request.Clave.Length < 8) return Results.BadRequest(new { mensaje = "Complete los datos y use una clave de al menos 8 caracteres." });
     return await db.BootstrapAsync(request, ct) ? Results.Ok() : Results.BadRequest(new { mensaje = "El Superadministrador inicial ya fue creado." });
 }).AllowAnonymous();
