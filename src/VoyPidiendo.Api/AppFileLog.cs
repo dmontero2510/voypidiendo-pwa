@@ -8,12 +8,14 @@ namespace VoyPidiendo.Api;
 public static class AppFileLog
 {
     private static readonly object Gate = new();
+    private static string LogFolder => Environment.GetEnvironmentVariable("VOYPIDIENDO_LOG_PATH")
+        ?? Path.Combine(AppContext.BaseDirectory, "Logs");
 
     public static void Write(string level, string message, Exception? exception = null)
     {
         try
         {
-            var folder = Path.Combine(AppContext.BaseDirectory, "Logs");
+            var folder = LogFolder;
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, $"VoyPidiendo-{DateTime.Now:yyyy-MM-dd}.log");
             var text = new StringBuilder()

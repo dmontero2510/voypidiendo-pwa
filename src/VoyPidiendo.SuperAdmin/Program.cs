@@ -6,7 +6,9 @@ using VoyPidiendo.SuperAdmin;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CentralRepository>();
-builder.Services.AddDataProtection().SetApplicationName("VoyPidiendo.SuperAdmin");
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VoyPidiendo.SuperAdmin");
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath)) dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "VoyPidiendo.SuperAdmin";
@@ -49,5 +51,23 @@ app.MapPost("/api/empresas", async (EmpresaRequest request, CentralRepository db
     return Results.Ok(new { id = await db.SaveCompanyAsync(request, ct) });
 }).RequireAuthorization();
 app.MapPost("/api/empresas/{id:int}/probar-conexion", async (int id, CentralRepository db, CancellationToken ct) => { await db.TestConnectionAsync(id, ct); return Results.Ok(new { mensaje = "Conexión correcta." }); }).RequireAuthorization();
+app.MapGet("/api/empresas/{id:int}/validar-estructura", async (int id, CentralRepository db, CancellationToken ct) =>
+    Results.Ok(await db.ValidateCompanyStructureAsync(id, ct))).RequireAuthorization();
+app.MapGet("/api/empresas/{id:int}/usuarios", async (int id, CentralRepository db, CancellationToken ct) =>
+    Results.Ok(await db.ListCompanyUsersAsync(id, ct))).RequireAuthorization();
+app.MapPost("/api/empresas/{id:int}/usuarios", async (int id, EmpresaUsuarioRequest request, CentralRepository db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Usuario) || string.IsNullOrWhiteSpace(request.Nombre) || request.Clave.Length < 6)
+        return Results.BadRequest(new { mensaje = "Complete usuario, nombre y una clave de al menos 6 caracteres." });
+    var result = await db.CreateCompanyUserAsync(id, request, ct);
+    return result.Created ? Results.Ok(new { mensaje = result.Message }) : Results.BadRequest(new { mensaje = result.Message });
+}).RequireAuthorization();
+app.MapPut("/api/empresas/{id:int}/usuarios/{userId:int}/habilitado/{enabled:bool}", async (int id, int userId, bool enabled, CentralRepository db, CancellationToken ct) =>
+    await db.SetCompanyUserEnabledAsync(id, userId, enabled, ct) ? Results.Ok() : Results.NotFound()).RequireAuthorization();
+app.MapPut("/api/empresas/{id:int}/usuarios/{userId:int}/clave", async (int id, int userId, CambioClaveRequest request, CentralRepository db, CancellationToken ct) =>
+{
+    if (request.Clave.Length < 6) return Results.BadRequest(new { mensaje = "La clave debe tener al menos 6 caracteres." });
+    return await db.ResetCompanyUserPasswordAsync(id, userId, request.Clave, ct) ? Results.Ok() : Results.NotFound();
+}).RequireAuthorization();
 
 app.Run();

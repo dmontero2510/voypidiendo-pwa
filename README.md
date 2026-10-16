@@ -1,66 +1,41 @@
 # VoyPidiendo PWA multiempresa
 
-Nueva generación independiente de VoyPidiendo. La aplicación original y su despliegue actual no se modifican desde este proyecto.
+Nueva generación independiente de VoyPidiendo. La aplicación original y su despliegue actual no se modifica desde este proyecto.
 
-## Modelo
+## Componentes
 
-Una misma aplicación identifica al cliente por el dominio utilizado. Cada empresa tiene:
+- **PWA/API:** aplicación única que cada vendedor instala desde el navegador.
+- **Superadministración:** panel separado para crear empresas, configurar funciones y administrar sus usuarios.
+- **Base central:** guarda empresas, dominios, parámetros y conexiones cifradas.
+- **Base de cada cliente:** conserva usuarios, pedidos, clientes, artículos y datos comerciales.
 
-- nombre, logo, colores, título y subtítulo;
-- funciones habilitadas;
-- parámetros de pedidos y PDF;
-- usuarios en su propia base;
-- cadena de conexión SQL exclusiva, almacenada solo en el servidor.
+Cada empresa puede tener su propio dominio, nombre, logo, colores, títulos, funciones habilitadas, parámetros de PDF y conexión SQL. El cliente se identifica automáticamente por el dominio utilizado.
 
-La empresa se incorpora al token al iniciar sesión. Un token emitido para una empresa es rechazado desde el dominio de otra.
+## Incorporar una empresa
 
-## Agregar una empresa
+1. Ingresar al panel de Superadministración.
+2. Crear la empresa y asignarle un código único.
+3. Cargar su dominio, presentación, parámetros y funciones habilitadas.
+4. Guardar su conexión SQL en el campo seguro.
+5. Ejecutar **Probar conexión** y **Validar estructura**.
+6. Crear o administrar los usuarios propios de esa empresa.
+7. Configurar el dominio para que apunte al servidor de VoyPidiendo.
 
-1. Agregar la empresa dentro de `Tenants:Items` en `appsettings.json`.
-2. Definir sus dominios en `Hosts`.
-3. Asignar un nombre de conexión en `ConnectionStringName`.
-4. Crear en el servidor la variable `ConnectionStrings__Tenant_CODIGO` con la conexión SQL real.
-5. Configurar el dominio para que apunte al servicio PWA.
+No se cargan empresas ni contraseñas manualmente en `appsettings.json`.
 
-Ejemplo:
+## Instalación de la base de un cliente
 
-```json
-"empresa2": {
-  "Hosts": [ "pedidos.empresa2.com" ],
-  "ConnectionStringName": "Tenant_empresa2",
-  "Nombre": "Distribuidora Empresa 2",
-  "Titulo": "Empresa 2 Pedidos",
-  "Subtitulo": "Toma de pedidos",
-  "Logo": "/clientes/empresa2/logo.svg",
-  "ColorPrincipal": "#1daed8",
-  "ColorSecundario": "#10213c",
-  "Pedidos": {
-    "PercepIIBB": false,
-    "Subtotales": true
-  },
-  "Funciones": {
-    "CargaMultiple": true,
-    "Seguimiento": true,
-    "UbicacionClientes": true,
-    "PdfPedidos": true
-  }
-}
-```
-
-La conexión se configura como variable de entorno:
-
-```text
-ConnectionStrings__Tenant_empresa2=Server=...;Database=...;User ID=...;Password=...
-```
+El script completo está en `database/000_INSTALACION_CLIENTE_COMPLETA.sql`. Debe revisarse con las vistas y tablas reales del sistema comercial antes de ejecutarlo en producción.
 
 ## Desarrollo local
 
-Copiar `src/VoyPidiendo.Api/appsettings.Development.example.json` como `appsettings.Development.json`, completar secretos y ejecutar:
+- PWA: `http://localhost:5090/?empresa=0001`
+- Superadministración: `http://localhost:5091`
 
-```powershell
-dotnet run --project .\src\VoyPidiendo.Api\VoyPidiendo.Api.csproj
-```
+## Instalación en Android
 
-## Instalación Android
+Abrir la dirección HTTPS asignada a la empresa en Chrome y elegir **Instalar aplicación**. Las actualizaciones posteriores se reciben desde el servidor sin reinstalar una APK.
 
-Abrir la dirección HTTPS de la empresa en Chrome y elegir **Instalar aplicación**. Las actualizaciones posteriores se reciben desde el servidor sin reinstalar una APK.
+## Publicación
+
+La preparación para Ubuntu, Docker, HTTPS, backups y DNS está documentada en `deploy/README.md`.

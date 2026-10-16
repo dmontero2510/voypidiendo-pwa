@@ -1,0 +1,117 @@
+name: voypidiendo
+
+services:
+  proxy:
+    image: nginxproxy/nginx-proxy:alpine
+    container_name: voypidiendo-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - proxy_certs:/etc/nginx/certs:ro
+      - proxy_vhost:/etc/nginx/vhost.d
+      - proxy_html:/usr/share/nginx/html
+    networks: [frontend]
+
+  certificates:
+    image: nginxproxy/acme-companion
+    restart: unless-stopped
+    environment:
+      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
+      NGINX_PROXY_CONTAINER: voypidiendo-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - proxy_certs:/etc/nginx/certs:rw
+      - proxy_vhost:/etc/nginx/vhost.d
+      - proxy_html:/usr/share/nginx/html
+      - acme_state:/etc/acme.sh
+    depends_on: [proxy]
+    networks: [frontend]
+
+  central-sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - central_sql:/var/opt/mssql
+      - ./backups:/var/opt/mssql/backup
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    networks: [backend]
+
+  database-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: "no"
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - ../database/100_base_central.sql:/init/100_base_central.sql:ro
+    entrypoint: ["/bin/bash","-c"]
+    command: ["/opt/mssql-tools18/bin/sqlcmd -S central-sql -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -b -i /init/100_base_central.sql"]
+    depends_on:
+      central-sql:
+        condition: service_healthy
+    networks: [backend]
+
+  pwa:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.pwa
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: ${PWA_HOSTS}
+      VIRTUAL_PORT: "8080"
+      LETSENCRYPT_HOST: ${PWA_HOSTS}
+      ConnectionStrings__Central: "Server=central-sql,1433;Database=VOYPIDIENDO_CENTRAL;User ID=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+      Jwt__Key: ${JWT_KEY}
+      DataProtection__KeysPath: /keys
+      VOYPIDIENDO_LOG_PATH: /logs
+    volumes:
+      - shared_keys:/keys
+      - ./logs/pwa:/logs
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
+    networks: [frontend,backend]
+
+  superadmin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.superadmin
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: ${CONTROL_HOST}
+      VIRTUAL_PORT: "8080"
+      LETSENCRYPT_HOST: ${CONTROL_HOST}
+      ConnectionStrings__Central: "Server=central-sql,1433;Database=VOYPIDIENDO_CENTRAL;User ID=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+      Security__BootstrapKey: ${SUPERADMIN_BOOTSTRAP_KEY}
+      DataProtection__KeysPath: /keys
+    volumes:
+      - shared_keys:/keys
+      - ./logs/superadmin:/logs
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
+    networks: [frontend,backend]
+
+volumes:
+  central_sql:
+  shared_keys:
+  proxy_certs:
+  proxy_vhost:
+  proxy_html:
+  acme_state:
+
+networks:
+  frontend:
+  backend:
+    internal: true

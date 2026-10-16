@@ -1,5 +1,6 @@
 using VoyPidiendo.Api;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
@@ -10,6 +11,10 @@ builder.Services.AddScoped<SqlServerRepository>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddSingleton<TenantCatalog>();
+builder.Services.AddMemoryCache();
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("VoyPidiendo.SuperAdmin");
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath)) dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["Security:ApiKey"] ?? "CONFIGURAR-UNA-CLAVE-DE-AL-MENOS-32-CARACTERES";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
@@ -32,7 +37,12 @@ app.Use(async (context, next) =>
 {
     var tenant = context.RequestServices.GetRequiredService<TenantContext>();
     var catalog = context.RequestServices.GetRequiredService<TenantCatalog>();
-    TenantCatalog.Copy(catalog.Resolve(context.Request.Host.Host), tenant);
+    var requestedCode = context.Request.Query["empresa"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(requestedCode))
+        context.Response.Cookies.Append("VoyPidiendo.Empresa", requestedCode, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, IsEssential = true, MaxAge = TimeSpan.FromDays(30) });
+    else
+        requestedCode = context.Request.Cookies["VoyPidiendo.Empresa"];
+    TenantCatalog.Copy(await catalog.ResolveAsync(context.Request.Host.Host, requestedCode, context.RequestAborted), tenant);
     await next();
 });
 app.Use(async (context, next) =>

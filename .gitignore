@@ -10,3 +10,6 @@ dist/
 VB6-VOYCERTIFICANDO/
 VOYCERTIFICANDO-PYTHON/
 appsettings.Production.json
+deploy/.env
+deploy/backups/
+deploy/logs/

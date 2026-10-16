@@ -1,3 +1,9 @@
+using System.Data;
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
+
 namespace VoyPidiendo.Api;
 
 public sealed class TenantContext
@@ -15,41 +21,64 @@ public sealed class TenantContext
     public bool Subtotales { get; internal set; } = true;
 }
 
-public sealed class TenantCatalog(IConfiguration configuration)
+public sealed class TenantCatalog(IConfiguration configuration, IDataProtectionProvider protectionProvider, IMemoryCache cache)
 {
-    public TenantContext Resolve(string host)
+    private readonly IDataProtector _protector = protectionProvider.CreateProtector("VoyPidiendo.Central.SqlConnections.v1");
+
+    public async Task<TenantContext> ResolveAsync(string host, string? requestedCode, CancellationToken ct)
     {
+        var central = configuration.GetConnectionString("Central")
+            ?? throw new InvalidOperationException("Falta ConnectionStrings:Central.");
         host = host.Split(':')[0].Trim().ToLowerInvariant();
-        var tenants = configuration.GetSection("Tenants:Items").GetChildren().ToList();
-        var selected = tenants.FirstOrDefault(x => x.GetSection("Hosts").Get<string[]>()?.Any(h =>
-            string.Equals(h.Trim(), host, StringComparison.OrdinalIgnoreCase)) == true);
-
-        if (selected is null)
+        requestedCode = requestedCode?.Trim().ToLowerInvariant();
+        var cacheKey = $"tenant:{requestedCode ?? ""}:{host}";
+        if (cache.TryGetValue<TenantContext>(cacheKey, out var cached) && cached is not null) return cached;
+        await using var cn = new SqlConnection(central);
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("""
+            SELECT TOP (1) e.ID_EMPRESA,e.CODIGO,e.NOMBRE,e.TITULO,ISNULL(e.SUBTITULO,''),ISNULL(e.LOGO_URL,''),
+                   e.COLOR_PRINCIPAL,e.COLOR_SECUNDARIO,e.CONEXION_CIFRADA,e.PERCEP_IIBB,e.SUBTOTALES
+            FROM dbo.SA_EMPRESAS e
+            WHERE e.HABILITADA=1
+              AND (e.VENCIMIENTO IS NULL OR e.VENCIMIENTO>=CONVERT(date,GETDATE()))
+              AND
+              (
+                  (@codigo<>'' AND e.CODIGO=@codigo)
+                  OR (@codigo='' AND EXISTS
+                      (SELECT 1 FROM dbo.SA_DOMINIOS d WHERE d.ID_EMPRESA=e.ID_EMPRESA AND d.HABILITADO=1 AND d.DOMINIO=@host))
+                  OR (@codigo='' AND @local=1)
+              )
+            ORDER BY CASE WHEN e.CODIGO=@codigo THEN 0 ELSE 1 END,e.ID_EMPRESA
+            """, cn);
+        cmd.Parameters.Add("@codigo", SqlDbType.VarChar, 40).Value = requestedCode ?? string.Empty;
+        cmd.Parameters.Add("@host", SqlDbType.VarChar, 200).Value = host;
+        cmd.Parameters.Add("@local", SqlDbType.Bit).Value = host is "localhost" or "127.0.0.1";
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        if (!await rd.ReadAsync(ct)) throw new InvalidOperationException("No existe una empresa habilitada para este acceso.");
+        if (rd.IsDBNull(8)) throw new InvalidOperationException("La empresa no tiene conexión SQL configurada.");
+        var companyId = rd.GetInt32(0);
+        var tenant = new TenantContext
         {
-            var defaultId = configuration["Tenants:DefaultTenant"];
-            selected = tenants.FirstOrDefault(x => string.Equals(x.Key, defaultId, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (selected is null) throw new InvalidOperationException($"No existe una empresa configurada para el dominio '{host}'.");
-        var connectionName = selected["ConnectionStringName"] ?? $"Tenant_{selected.Key}";
-        var connectionString = configuration.GetConnectionString(connectionName);
-        if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException($"Falta ConnectionStrings:{connectionName} para la empresa {selected.Key}.");
-
-        return new TenantContext
-        {
-            Id = selected.Key,
-            Nombre = selected["Nombre"] ?? selected.Key,
-            Titulo = selected["Titulo"] ?? "Voy Pidiendo",
-            Subtitulo = selected["Subtitulo"] ?? "Toma de pedidos",
-            Logo = selected["Logo"] ?? "/icons/icon.svg",
-            ColorPrincipal = selected["ColorPrincipal"] ?? "#20b3df",
-            ColorSecundario = selected["ColorSecundario"] ?? "#10213c",
-            ConnectionString = connectionString,
-            Funciones = selected.GetSection("Funciones").GetChildren().ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Get<bool>(), StringComparer.OrdinalIgnoreCase),
-            PercepIibb = selected.GetValue("Pedidos:PercepIIBB", true),
-            Subtotales = selected.GetValue("Pedidos:Subtotales", true)
+            Id = rd.GetString(1),
+            Nombre = rd.GetString(2),
+            Titulo = rd.GetString(3),
+            Subtitulo = rd.GetString(4),
+            Logo = string.IsNullOrWhiteSpace(rd.GetString(5)) ? "/icons/icon.svg" : rd.GetString(5),
+            ColorPrincipal = rd.GetString(6),
+            ColorSecundario = rd.GetString(7),
+            ConnectionString = _protector.Unprotect(Encoding.UTF8.GetString((byte[])rd[8])),
+            PercepIibb = rd.GetBoolean(9),
+            Subtotales = rd.GetBoolean(10)
         };
+        await rd.CloseAsync();
+        await using var functions = new SqlCommand("SELECT FUNCION,HABILITADA FROM dbo.SA_FUNCIONES WHERE ID_EMPRESA=@id", cn);
+        functions.Parameters.Add("@id", SqlDbType.Int).Value = companyId;
+        await using var fr = await functions.ExecuteReaderAsync(ct);
+        var values = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        while (await fr.ReadAsync(ct)) values[fr.GetString(0)] = fr.GetBoolean(1);
+        tenant.Funciones = values;
+        cache.Set(cacheKey, tenant, TimeSpan.FromSeconds(30));
+        return tenant;
     }
 
     public static void Copy(TenantContext source, TenantContext destination)
@@ -68,14 +97,4 @@ public sealed class TenantCatalog(IConfiguration configuration)
     }
 }
 
-public sealed record TenantPublicConfig(
-    string Codigo,
-    string Nombre,
-    string Titulo,
-    string Subtitulo,
-    string Logo,
-    string ColorPrincipal,
-    string ColorSecundario,
-    IReadOnlyDictionary<string, bool> Funciones,
-    bool PercepIibb,
-    bool Subtotales);
+public sealed record TenantPublicConfig(string Codigo, string Nombre, string Titulo, string Subtitulo, string Logo, string ColorPrincipal, string ColorSecundario, IReadOnlyDictionary<string, bool> Funciones, bool PercepIibb, bool Subtotales);

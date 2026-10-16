@@ -5,3 +5,6 @@
 dist
 VB6-VOYCERTIFICANDO
 VOYCERTIFICANDO-PYTHON
+deploy/.env
+deploy/backups
+deploy/logs

@@ -67,7 +67,7 @@ public sealed class CentralRepository(
         await using var cmd = new SqlCommand("""
             SELECT e.ID_EMPRESA,e.CODIGO,e.NOMBRE,e.TITULO,ISNULL(e.SUBTITULO,''),ISNULL(e.LOGO_URL,''),e.COLOR_PRINCIPAL,e.COLOR_SECUNDARIO,
               ISNULL((SELECT TOP(1)d.DOMINIO FROM dbo.SA_DOMINIOS d WHERE d.ID_EMPRESA=e.ID_EMPRESA AND d.HABILITADO=1 ORDER BY d.PRINCIPAL DESC,d.ID_DOMINIO),''),
-              ISNULL(e.CONEXION_REFERENCIA,''),CASE WHEN e.CONEXION_CIFRADA IS NULL THEN 0 ELSE 1 END,e.PERCEP_IIBB,e.SUBTOTALES,e.HABILITADA,e.VENCIMIENTO,e.ULTIMA_ACTIVIDAD
+              ISNULL(e.CONEXION_REFERENCIA,''),CAST(CASE WHEN e.CONEXION_CIFRADA IS NULL THEN 0 ELSE 1 END AS bit),e.PERCEP_IIBB,e.SUBTOTALES,e.HABILITADA,e.VENCIMIENTO,e.ULTIMA_ACTIVIDAD
             FROM dbo.SA_EMPRESAS e ORDER BY e.NOMBRE
             """, cn);
         var result = new List<EmpresaDto>();
@@ -163,14 +163,128 @@ public sealed class CentralRepository(
 
     public async Task TestConnectionAsync(int id, CancellationToken ct)
     {
-        await using var cn = CreateConnection(); await cn.OpenAsync(ct);
+        var text = await GetCompanyConnectionStringAsync(id, ct);
+        await using var target = new SqlConnection(text); await target.OpenAsync(ct);
+        await using var test = new SqlCommand("SELECT 1", target); await test.ExecuteScalarAsync(ct);
+    }
+
+    public async Task<ValidacionEmpresaDto> ValidateCompanyStructureAsync(int companyId, CancellationToken ct)
+    {
+        var required = new Dictionary<string, (string Type, string[] Columns)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["APP_USUARIOS"] = ("Tabla de la aplicación", ["ID_USUARIO","USUARIO","NOMBRE","CLAVE_HASH","ROL","HABILITADO","COD_VEND","FECHA_ALTA"]),
+            ["APP_VISITAS"] = ("Tabla de la aplicación", ["ID_VISITA","ID_USUARIO","USUARIO","ORGANIZACION","COD_CLIENTE","FECHA_LLEGADA","LAT_LLEGADA","LON_LLEGADA","FECHA_SALIDA","LAT_SALIDA","LON_SALIDA"]),
+            ["APP_CLIENTES_UBICACION"] = ("Tabla de la aplicación", ["ORGANIZACION","COD_CLIENTE","LATITUD","LONGITUD","FECHA_REGISTRO","USUARIO"]),
+            ["APP_TITULO"] = ("Tabla de configuración", ["TITULO","SUBTITULO","DIRECCION","CUIT","COMENTARIO"]),
+            ["VW_APP_CLIENTES"] = ("Vista requerida", ["ORGANIZACION","CODIGO","NOMBRE","DIRECCION","ZONA","CUIT","TIPOIVA","IVA"]),
+            ["VW_APP_ARTICULOS"] = ("Vista requerida", ["ORGANIZACION","CODART","DESCRIPCION","PRECIO","ALIC","RUBRO","FRIO","MARCA"]),
+            ["STREMITOS"] = ("Tabla del sistema comercial", []),
+            ["STREMITOSDET"] = ("Tabla del sistema comercial", []),
+            ["PADRONPERCE"] = ("Tabla del sistema comercial", []),
+            ["GSIVAVTA"] = ("Tabla del sistema comercial", []),
+            ["GSIVADET"] = ("Tabla del sistema comercial", [])
+        };
+        await using var cn = new SqlConnection(await GetCompanyConnectionStringAsync(companyId, ct));
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("""
+            SELECT o.name,o.type,c.name
+            FROM sys.objects o
+            LEFT JOIN sys.columns c ON c.object_id=o.object_id
+            WHERE SCHEMA_NAME(o.schema_id)='dbo' AND o.name IN
+            ('APP_USUARIOS','APP_VISITAS','APP_CLIENTES_UBICACION','APP_TITULO','VW_APP_CLIENTES','VW_APP_ARTICULOS','STREMITOS','STREMITOSDET','PADRONPERCE','GSIVAVTA','GSIVADET')
+            """, cn);
+        var found = new Dictionary<string, (string Type, HashSet<string> Columns)>(StringComparer.OrdinalIgnoreCase);
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        while (await rd.ReadAsync(ct))
+        {
+            var name = rd.GetString(0);
+            if (!found.TryGetValue(name, out var value)) value = (rd.GetString(1), new(StringComparer.OrdinalIgnoreCase));
+            if (!rd.IsDBNull(2)) value.Columns.Add(rd.GetString(2));
+            found[name] = value;
+        }
+        var result = new List<ValidacionObjetoDto>();
+        foreach (var item in required)
+        {
+            if (!found.TryGetValue(item.Key, out var value))
+            {
+                result.Add(new(item.Key, item.Value.Type, false, "No existe"));
+                continue;
+            }
+            var missing = item.Value.Columns.Where(x => !value.Columns.Contains(x)).ToArray();
+            result.Add(missing.Length == 0
+                ? new(item.Key, item.Value.Type, true, "Correcto")
+                : new(item.Key, item.Value.Type, false, "Faltan columnas: " + string.Join(", ", missing)));
+        }
+        var ok = result.Count(x => x.Correcto);
+        return new(ok == result.Count, ok, result.Count, result);
+    }
+
+    private async Task<string> GetCompanyConnectionStringAsync(int id, CancellationToken ct)
+    {
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
         await using var cmd = new SqlCommand("SELECT CONEXION_CIFRADA FROM dbo.SA_EMPRESAS WHERE ID_EMPRESA=@id", cn);
         cmd.Parameters.Add("@id", SqlDbType.Int).Value = id;
         var raw = await cmd.ExecuteScalarAsync(ct);
         if (raw is not byte[] bytes) throw new InvalidOperationException("La empresa no tiene conexión configurada.");
-        var text = _protector.Unprotect(Encoding.UTF8.GetString(bytes));
-        await using var target = new SqlConnection(text); await target.OpenAsync(ct);
-        await using var test = new SqlCommand("SELECT 1", target); await test.ExecuteScalarAsync(ct);
+        return _protector.Unprotect(Encoding.UTF8.GetString(bytes));
+    }
+
+    public async Task<IReadOnlyList<EmpresaUsuarioDto>> ListCompanyUsersAsync(int companyId, CancellationToken ct)
+    {
+        await using var cn = new SqlConnection(await GetCompanyConnectionStringAsync(companyId, ct));
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("SELECT ID_USUARIO,USUARIO,NOMBRE,ROL,HABILITADO,COD_VEND FROM dbo.APP_USUARIOS ORDER BY NOMBRE", cn);
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        var result = new List<EmpresaUsuarioDto>();
+        while (await rd.ReadAsync(ct))
+            result.Add(new(rd.GetInt32(0), rd.GetString(1), rd.GetString(2), rd.GetString(3).Trim(), rd.GetBoolean(4), rd.IsDBNull(5) ? null : rd.GetInt32(5)));
+        return result;
+    }
+
+    public async Task<(bool Created, string Message)> CreateCompanyUserAsync(int companyId, EmpresaUsuarioRequest request, CancellationToken ct)
+    {
+        var role = request.Rol.Trim().ToUpperInvariant();
+        if (role is not ("A" or "V" or "P" or "S" or "Q")) return (false, "El rol debe ser A, V, P, S o Q.");
+        await using var cn = new SqlConnection(await GetCompanyConnectionStringAsync(companyId, ct));
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("""
+            IF EXISTS (SELECT 1 FROM dbo.APP_USUARIOS WHERE USUARIO=@usuario)
+                SELECT CAST(0 AS bit)
+            ELSE
+            BEGIN
+                INSERT dbo.APP_USUARIOS(USUARIO,NOMBRE,CLAVE_HASH,ROL,HABILITADO,COD_VEND)
+                VALUES(@usuario,@nombre,@hash,@rol,1,@codVend)
+                SELECT CAST(1 AS bit)
+            END
+            """, cn);
+        cmd.Parameters.Add("@usuario", SqlDbType.VarChar, 50).Value = request.Usuario.Trim();
+        cmd.Parameters.Add("@nombre", SqlDbType.VarChar, 100).Value = request.Nombre.Trim();
+        cmd.Parameters.Add("@hash", SqlDbType.VarChar, 100).Value = BCrypt.Net.BCrypt.HashPassword(request.Clave);
+        cmd.Parameters.Add("@rol", SqlDbType.Char, 1).Value = role;
+        cmd.Parameters.Add("@codVend", SqlDbType.Int).Value = role == "V" && request.CodVend.HasValue ? request.CodVend.Value : DBNull.Value;
+        var created = Convert.ToBoolean(await cmd.ExecuteScalarAsync(ct));
+        return created ? (true, "Usuario creado.") : (false, "Ya existe ese usuario en esta empresa.");
+    }
+
+    public async Task<bool> SetCompanyUserEnabledAsync(int companyId, int userId, bool enabled, CancellationToken ct)
+    {
+        await using var cn = new SqlConnection(await GetCompanyConnectionStringAsync(companyId, ct));
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("UPDATE dbo.APP_USUARIOS SET HABILITADO=@enabled WHERE ID_USUARIO=@id", cn);
+        cmd.Parameters.Add("@enabled", SqlDbType.Bit).Value = enabled;
+        cmd.Parameters.Add("@id", SqlDbType.Int).Value = userId;
+        return await cmd.ExecuteNonQueryAsync(ct) == 1;
+    }
+
+    public async Task<bool> ResetCompanyUserPasswordAsync(int companyId, int userId, string password, CancellationToken ct)
+    {
+        await using var cn = new SqlConnection(await GetCompanyConnectionStringAsync(companyId, ct));
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("UPDATE dbo.APP_USUARIOS SET CLAVE_HASH=@hash WHERE ID_USUARIO=@id", cn);
+        cmd.Parameters.Add("@hash", SqlDbType.VarChar, 100).Value = BCrypt.Net.BCrypt.HashPassword(password);
+        cmd.Parameters.Add("@id", SqlDbType.Int).Value = userId;
+        return await cmd.ExecuteNonQueryAsync(ct) == 1;
     }
 
     private async Task AuditAsync(SqlConnection cn, SqlTransaction tx, int? companyId, string action, string detail, CancellationToken ct)
