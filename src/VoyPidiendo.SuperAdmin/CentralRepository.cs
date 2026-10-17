@@ -178,6 +178,12 @@ public sealed class CentralRepository(
             ["APP_TITULO"] = ("Tabla de configuración", ["TITULO","SUBTITULO","DIRECCION","CUIT","COMENTARIO"]),
             ["VW_APP_CLIENTES"] = ("Vista requerida", ["ORGANIZACION","CODIGO","NOMBRE","DIRECCION","ZONA","CUIT","TIPOIVA","IVA"]),
             ["VW_APP_ARTICULOS"] = ("Vista requerida", ["ORGANIZACION","CODART","DESCRIPCION","PRECIO","ALIC","RUBRO","FRIO","MARCA"]),
+            ["FUCLIENTES"] = ("Tabla de clientes", ["ORGANIZACION","COD_CLIENTE","NOMBRE","IVA","CUIT","DIRECCION","POSTAL","PCIA","LOCALI","CELULAR","EMAIL","PAGINAWEB","OBSERVACIONES","ZONA","CAEDOC","EXENTO"]),
+            ["GSTIPOIVA"] = ("Tabla de validación", []),
+            ["EXPROVINCIA"] = ("Tabla de validación", []),
+            ["EXLOCALIDAD"] = ("Tabla de validación", []),
+            ["GSZONA"] = ("Tabla de validación", []),
+            ["TATIPDOC"] = ("Tabla de validación", []),
             ["STREMITOS"] = ("Tabla del sistema comercial", []),
             ["STREMITOSDET"] = ("Tabla del sistema comercial", []),
             ["PADRONPERCE"] = ("Tabla del sistema comercial", []),
@@ -191,7 +197,7 @@ public sealed class CentralRepository(
             FROM sys.objects o
             LEFT JOIN sys.columns c ON c.object_id=o.object_id
             WHERE SCHEMA_NAME(o.schema_id)='dbo' AND o.name IN
-            ('APP_USUARIOS','APP_VISITAS','APP_CLIENTES_UBICACION','APP_TITULO','VW_APP_CLIENTES','VW_APP_ARTICULOS','STREMITOS','STREMITOSDET','PADRONPERCE','GSIVAVTA','GSIVADET')
+            ('APP_USUARIOS','APP_VISITAS','APP_CLIENTES_UBICACION','APP_TITULO','VW_APP_CLIENTES','VW_APP_ARTICULOS','FUCLIENTES','GSTIPOIVA','EXPROVINCIA','EXLOCALIDAD','GSZONA','TATIPDOC','STREMITOS','STREMITOSDET','PADRONPERCE','GSIVAVTA','GSIVADET')
             """, cn);
         var found = new Dictionary<string, (string Type, HashSet<string> Columns)>(StringComparer.OrdinalIgnoreCase);
         await using var rd = await cmd.ExecuteReaderAsync(ct);

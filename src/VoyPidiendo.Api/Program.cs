@@ -224,6 +224,22 @@ app.MapGet("/api/clientes/buscar", async (string? texto, string? zona, SqlServer
     Results.Ok(await db.SearchClientsAsync(texto, zona, ct)))
     .RequireAuthorization(policy => policy.RequireRole("A", "P", "S", "Q", "V"));
 
+app.MapGet("/api/clientes/gestion/catalogos", async (SqlServerRepository db, CancellationToken ct) =>
+{
+    try { return Results.Ok(await db.GetClientCatalogsAsync(ct)); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { mensaje = ex.Message }); }
+}).RequireAuthorization(policy => policy.RequireRole("A", "V"));
+
+app.MapGet("/api/clientes/gestion", async (string? texto, SqlServerRepository db, CancellationToken ct) =>
+    Results.Ok(await db.SearchManagedClientsAsync(texto, ct)))
+    .RequireAuthorization(policy => policy.RequireRole("A", "V"));
+
+app.MapPost("/api/clientes/gestion", async (ClienteGestionRequest request, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
+{
+    try { return Results.Ok(await db.SaveManagedClientAsync(request, user.FindFirstValue("usuario") ?? "APP", ct)); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { mensaje = ex.Message }); }
+}).RequireAuthorization(policy => policy.RequireRole("A", "V"));
+
 app.MapGet("/api/clientes/{organizacion:int}/{codigo:int}/percepcion", async (int organizacion, int codigo, SqlServerRepository db, CancellationToken ct) =>
     Results.Ok(await db.GetClientPerceptionAsync(organizacion, codigo, ct)))
     .RequireAuthorization(policy => policy.RequireRole("V"));

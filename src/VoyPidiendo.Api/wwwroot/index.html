@@ -9,7 +9,7 @@
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=4">
   <link rel="stylesheet" href="search-results.css?v=4">
-  <link rel="stylesheet" href="admin.css?v=8">
+  <link rel="stylesheet" href="admin.css?v=9">
   <link rel="stylesheet" href="voyllegando-theme.css?v=9">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -31,7 +31,7 @@
       </div>
       <div id="sessionPanel" hidden class="section-title">
         <strong id="sessionUser"></strong>
-        <div class="session-actions"><button id="showClientLocations" class="secondary">📍 Clientes</button><button id="logoutButton" class="secondary">Cerrar sesión</button></div>
+        <div class="session-actions"><button id="showClientManagement" class="secondary">👤 Alta de clientes</button><button id="showClientLocations" class="secondary">📍 Ubicaciones</button><button id="logoutButton" class="secondary">Cerrar sesión</button></div>
       </div>
       <p id="status" class="muted">Ingresá con tu usuario y contraseña.</p>
     </section>
@@ -50,6 +50,7 @@
       <h2>Panel de administración</h2>
       <div class="admin-menu-grid">
         <button id="showUsers" class="admin-menu-button"><span>👥</span><strong>Usuarios</strong><small>Vendedores y accesos</small></button>
+        <button id="showClients" class="admin-menu-button"><span>👤</span><strong>Clientes</strong><small>Alta y modificación</small></button>
         <button id="showTracking" class="admin-menu-button"><span>📍</span><strong>Seguimiento</strong><small>Recorridos y ubicaciones</small></button>
         <button id="showOrders" class="admin-menu-button"><span>📋</span><strong>Consulta de pedidos</strong><small>Situación y totales</small></button>
         <button id="showDashboard" class="admin-menu-button"><span>📊</span><strong>Pedidos</strong><small>Ventas y cantidades</small></button>
@@ -79,6 +80,36 @@
       <div class="table-wrap">
         <table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>COD_VEND</th><th>Estado</th><th></th></tr></thead><tbody id="usersList"></tbody></table>
       </div>
+    </section>
+
+    <section id="clientManagement" class="card" hidden>
+      <div class="section-title"><h2>Alta y modificación de clientes</h2><button class="secondary backAdmin">← Volver</button></div>
+      <div class="client-management-search">
+        <label class="grow">Buscar cliente por código o nombre<input id="managedClientSearch" type="search" autocomplete="off" placeholder="Escriba para modificar un cliente"></label>
+        <button id="newManagedClient" class="secondary">+ Nuevo cliente</button>
+      </div>
+      <div id="managedClientResults" class="product-results client-management-results"></div>
+      <form id="managedClientForm" class="client-form">
+        <input id="managedClientCode" type="hidden">
+        <div class="client-form-heading"><strong id="managedClientFormTitle">Nuevo cliente</strong><span id="managedClientCodeLabel" class="pill">Código automático</span></div>
+        <div class="client-form-grid">
+          <label class="client-field-wide">Nombre<input id="managedClientName" maxlength="120" required></label>
+          <label>Tipo de IVA<select id="managedClientIva" required></select></label>
+          <label>CUIT<input id="managedClientCuit" maxlength="11" inputmode="numeric" value="00000000000"></label>
+          <label class="client-field-wide">Dirección<input id="managedClientAddress" maxlength="255" required></label>
+          <label>Código postal<input id="managedClientPostal" maxlength="12" value="6237"></label>
+          <label>Provincia<select id="managedClientProvince" required></select></label>
+          <label>Localidad<select id="managedClientLocality" required></select></label>
+          <label>Zona<select id="managedClientZone" required></select></label>
+          <label>Tipo de documento<select id="managedClientDocumentType" required></select></label>
+          <label>Exento<select id="managedClientExempt"><option value="No">No</option><option value="Si">Sí</option></select></label>
+          <label>Celular<input id="managedClientPhone" maxlength="50" inputmode="tel"></label>
+          <label>Email<input id="managedClientEmail" maxlength="250" type="email"></label>
+          <label>Página web<input id="managedClientWeb" maxlength="50"></label>
+          <label class="client-field-wide">Observaciones<input id="managedClientNotes" maxlength="100"></label>
+        </div>
+        <div class="client-form-actions"><button id="cancelManagedClient" type="button" class="secondary">Limpiar</button><button type="submit">Guardar cliente</button></div>
+      </form>
     </section>
 
     <section id="adminTracking" class="card" hidden>
@@ -301,6 +332,6 @@
   <div id="toast" class="toast" role="status"></div>
   <div id="queryBusy" class="query-busy" hidden><div class="query-busy-box"><span class="query-spinner"></span><strong>Ejecutando consulta…</strong><small>Espere, puede demorar unos segundos.</small></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>

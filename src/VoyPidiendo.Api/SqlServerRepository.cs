@@ -449,6 +449,183 @@ public sealed class SqlServerRepository(TenantContext tenant)
         return result;
     }
 
+    public async Task<CatalogosClienteDto> GetClientCatalogsAsync(CancellationToken ct)
+    {
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        return new(
+            await ReadLookupAsync(cn, "GSTIPOIVA", ["IVA", "TIPOIVA", "CODIGO"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
+            await ReadLookupAsync(cn, "EXPROVINCIA", ["PCIA", "CODIGO", "COD_PROVINCIA"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
+            await ReadLookupAsync(cn, "EXLOCALIDAD", ["LOCALI", "CODIGO", "COD_LOCALIDAD"], ["DETALLE", "DESCRIPCION", "NOMBRE"], ["PCIA", "PROVINCIA", "COD_PROVINCIA"], ct),
+            await ReadLookupAsync(cn, "GSZONA", ["ZONA", "CODIGO", "COD_ZONA"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
+            await ReadLookupAsync(cn, "TATIPDOC", ["CAEDOC", "TIPODOC", "CODIGO"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct));
+    }
+
+    public async Task<IReadOnlyList<ClienteGestionDto>> SearchManagedClientsAsync(string? texto, CancellationToken ct)
+    {
+        texto = texto?.Trim();
+        if (string.IsNullOrWhiteSpace(texto)) return [];
+        var isCode = int.TryParse(texto, out var code);
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        await using var cmd = new SqlCommand("""
+            SELECT TOP (30) ORGANIZACION,COD_CLIENTE,ISNULL(NOMBRE,''),ISNULL(IVA,''),ISNULL(CUIT,''),
+                   ISNULL(DIRECCION,''),ISNULL(POSTAL,''),ISNULL(PCIA,''),ISNULL(LOCALI,''),ISNULL(CELULAR,''),
+                   ISNULL(EMAIL,''),ISNULL(PAGINAWEB,''),ISNULL(OBSERVACIONES,''),ISNULL(ZONA,0),ISNULL(CAEDOC,''),ISNULL(EXENTO,'')
+            FROM dbo.FUCLIENTES
+            WHERE ORGANIZACION=1
+              AND ((@esCodigo=1 AND COD_CLIENTE=@codigo) OR (@esCodigo=0 AND NOMBRE LIKE '%' + @texto + '%'))
+            ORDER BY NOMBRE,COD_CLIENTE
+            """, cn);
+        cmd.Parameters.Add("@esCodigo", SqlDbType.Bit).Value = isCode;
+        cmd.Parameters.Add("@codigo", SqlDbType.Int).Value = isCode ? code : -1;
+        cmd.Parameters.Add("@texto", SqlDbType.VarChar, 120).Value = texto;
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        var result = new List<ClienteGestionDto>();
+        while (await rd.ReadAsync(ct)) result.Add(ReadManagedClient(rd));
+        return result;
+    }
+
+    public async Task<ClienteGestionDto> SaveManagedClientAsync(ClienteGestionRequest request, string username, CancellationToken ct)
+    {
+        var name = (request.Nombre ?? string.Empty).Trim();
+        var address = (request.Direccion ?? string.Empty).Trim();
+        var iva = DefaultText(request.Iva, "F");
+        var cuit = DefaultText(request.Cuit, "00000000000").Replace("-", string.Empty).Replace(" ", string.Empty);
+        var postal = DefaultText(request.Postal, "6237");
+        var province = DefaultText(request.Provincia, "01");
+        var locality = DefaultText(request.Localidad, "094");
+        var documentType = DefaultText(request.TipoDocumento, "99");
+        var exempt = DefaultText(request.Exento, "No");
+        var zone = request.Zona ?? 10;
+        if (name.Length == 0 || name.Length > 120) throw new InvalidOperationException("Ingrese el nombre del cliente.");
+        if (address.Length == 0 || address.Length > 255) throw new InvalidOperationException("Ingrese el domicilio del cliente.");
+        if (!ValidCuit(cuit)) throw new InvalidOperationException("El CUIT ingresado no es válido.");
+        if ((request.Celular?.Length ?? 0) > 50 || (request.Email?.Length ?? 0) > 250 || (request.PaginaWeb?.Length ?? 0) > 50 || (request.Observaciones?.Length ?? 0) > 100)
+            throw new InvalidOperationException("Uno de los textos supera la longitud permitida.");
+
+        var catalogs = await GetClientCatalogsAsync(ct);
+        if (!catalogs.TiposIva.Any(x => x.Codigo.Equals(iva, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Seleccione un tipo de IVA válido.");
+        if (!catalogs.Provincias.Any(x => x.Codigo.Equals(province, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Seleccione una provincia válida.");
+        if (!catalogs.Localidades.Any(x => x.Codigo.Equals(locality, StringComparison.OrdinalIgnoreCase) && (string.IsNullOrWhiteSpace(x.Padre) || x.Padre.Equals(province, StringComparison.OrdinalIgnoreCase)))) throw new InvalidOperationException("Seleccione una localidad válida para la provincia.");
+        if (!catalogs.Zonas.Any(x => x.Codigo == zone.ToString())) throw new InvalidOperationException("Seleccione una zona válida.");
+        if (!catalogs.TiposDocumento.Any(x => x.Codigo.Equals(documentType, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Seleccione un tipo de documento válido.");
+
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        using var tx = cn.BeginTransaction(IsolationLevel.Serializable);
+        try
+        {
+            if (cuit != "00000000000")
+            {
+                await using var duplicate = new SqlCommand("SELECT COUNT(*) FROM dbo.FUCLIENTES WHERE CUIT=@cuit AND NOT (ORGANIZACION=1 AND COD_CLIENTE=@codigo)", cn, tx);
+                duplicate.Parameters.Add("@cuit", SqlDbType.VarChar, 11).Value = cuit;
+                duplicate.Parameters.Add("@codigo", SqlDbType.Int).Value = request.Codigo ?? -1;
+                if (Convert.ToInt32(await duplicate.ExecuteScalarAsync(ct)) > 0) throw new InvalidOperationException("El CUIT ya está registrado en otro cliente.");
+            }
+
+            var code = request.Codigo;
+            if (code is null)
+            {
+                await using var next = new SqlCommand("SELECT CONVERT(int,ISNULL(MAX(COD_CLIENTE),0))+1 FROM dbo.FUCLIENTES WITH (UPDLOCK,HOLDLOCK) WHERE ORGANIZACION=1", cn, tx);
+                code = Convert.ToInt32(await next.ExecuteScalarAsync(ct));
+                if (code > short.MaxValue) throw new InvalidOperationException("No hay códigos de cliente disponibles.");
+                await using var insert = new SqlCommand("""
+                    INSERT dbo.FUCLIENTES
+                    (ORGANIZACION,COD_CLIENTE,NOMBRE,IVA,CUIT,DIRECCION,POSTAL,PCIA,LOCALI,CELULAR,EMAIL,PAGINAWEB,
+                     SALDO_INI,FECHA_INI,SALDO_ANT,OBSERVACIONES,CONDIB,CONDGN,TIPCLI,GRPCLI,ZONA,COD_VEND,DESCTO,LISTA,
+                     AUD_FEC,AUD_HOR,AUD_USR,CAEDOC,EXENTO)
+                    VALUES
+                    (1,@codigo,@nombre,@iva,@cuit,@direccion,@postal,@pcia,@locali,@celular,@email,@web,
+                     0,CONVERT(int,CONVERT(char(8),GETDATE(),112)),0,@observaciones,'1','1','1',0,@zona,1,1,1,
+                     CONVERT(int,CONVERT(char(8),GETDATE(),112)),CONVERT(int,REPLACE(CONVERT(char(8),GETDATE(),108),':','')),@usuario,@documento,@exento)
+                    """, cn, tx);
+                AddManagedClientParameters(insert, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt);
+                await insert.ExecuteNonQueryAsync(ct);
+            }
+            else
+            {
+                await using var update = new SqlCommand("""
+                    UPDATE dbo.FUCLIENTES SET NOMBRE=@nombre,IVA=@iva,CUIT=@cuit,DIRECCION=@direccion,POSTAL=@postal,
+                        PCIA=@pcia,LOCALI=@locali,CELULAR=@celular,EMAIL=@email,PAGINAWEB=@web,OBSERVACIONES=@observaciones,
+                        ZONA=@zona,CAEDOC=@documento,EXENTO=@exento,
+                        AUD_FEC=CONVERT(int,CONVERT(char(8),GETDATE(),112)),
+                        AUD_HOR=CONVERT(int,REPLACE(CONVERT(char(8),GETDATE(),108),':','')),AUD_USR=@usuario
+                    WHERE ORGANIZACION=1 AND COD_CLIENTE=@codigo
+                    """, cn, tx);
+                AddManagedClientParameters(update, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt);
+                if (await update.ExecuteNonQueryAsync(ct) == 0) throw new InvalidOperationException("El cliente que intenta modificar ya no existe.");
+            }
+            tx.Commit();
+            return new(1, code.Value, name, iva, cuit, address, postal, province, locality, request.Celular?.Trim() ?? string.Empty, request.Email?.Trim() ?? string.Empty, request.PaginaWeb?.Trim() ?? string.Empty, request.Observaciones?.Trim() ?? string.Empty, zone, documentType, exempt);
+        }
+        catch { tx.Rollback(); throw; }
+    }
+
+    private static void AddManagedClientParameters(SqlCommand cmd, int code, string name, string iva, string cuit, string address, string postal, string province, string locality, ClienteGestionRequest request, int zone, string username, string documentType, string exempt)
+    {
+        cmd.Parameters.Add("@codigo", SqlDbType.Int).Value = code;
+        cmd.Parameters.Add("@nombre", SqlDbType.VarChar, 120).Value = name;
+        cmd.Parameters.Add("@iva", SqlDbType.VarChar, 2).Value = iva;
+        cmd.Parameters.Add("@cuit", SqlDbType.VarChar, 11).Value = cuit;
+        cmd.Parameters.Add("@direccion", SqlDbType.VarChar, 255).Value = address;
+        cmd.Parameters.Add("@postal", SqlDbType.VarChar, 12).Value = postal;
+        cmd.Parameters.Add("@pcia", SqlDbType.VarChar, 2).Value = province;
+        cmd.Parameters.Add("@locali", SqlDbType.VarChar, 3).Value = locality;
+        cmd.Parameters.Add("@celular", SqlDbType.VarChar, 50).Value = (object?)request.Celular?.Trim() ?? DBNull.Value;
+        cmd.Parameters.Add("@email", SqlDbType.VarChar, 250).Value = (object?)request.Email?.Trim() ?? DBNull.Value;
+        cmd.Parameters.Add("@web", SqlDbType.VarChar, 50).Value = (object?)request.PaginaWeb?.Trim() ?? DBNull.Value;
+        cmd.Parameters.Add("@observaciones", SqlDbType.VarChar, 100).Value = (object?)request.Observaciones?.Trim() ?? DBNull.Value;
+        cmd.Parameters.Add("@zona", SqlDbType.Int).Value = zone;
+        cmd.Parameters.Add("@usuario", SqlDbType.VarChar, 10).Value = string.IsNullOrWhiteSpace(username) ? "APP" : username.Trim()[..Math.Min(10, username.Trim().Length)];
+        cmd.Parameters.Add("@documento", SqlDbType.VarChar, 2).Value = documentType;
+        cmd.Parameters.Add("@exento", SqlDbType.VarChar, 2).Value = exempt;
+    }
+
+    private static ClienteGestionDto ReadManagedClient(SqlDataReader rd) => new(
+        Convert.ToInt32(rd.GetValue(0)), Convert.ToInt32(rd.GetValue(1)), rd.GetString(2).Trim(), rd.GetString(3).Trim(), rd.GetString(4).Trim(), rd.GetString(5).Trim(), rd.GetString(6).Trim(), rd.GetString(7).Trim(), rd.GetString(8).Trim(), rd.GetString(9).Trim(), rd.GetString(10).Trim(), rd.GetString(11).Trim(), rd.GetString(12).Trim(), Convert.ToInt32(rd.GetValue(13)), rd.GetString(14).Trim(), rd.GetString(15).Trim());
+
+    private static string DefaultText(string? value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static bool ValidCuit(string value)
+    {
+        if (value == "00000000000") return true;
+        if (value.Length != 11 || value.Any(x => x is < '0' or > '9')) return false;
+        int[] weights = [5,4,3,2,7,6,5,4,3,2];
+        var sum = 0;
+        for (var i = 0; i < weights.Length; i++) sum += (value[i] - '0') * weights[i];
+        var digit = 11 - sum % 11;
+        if (digit == 11) digit = 0; else if (digit == 10) digit = 9;
+        return digit == value[10] - '0';
+    }
+
+    private static async Task<IReadOnlyList<OpcionClienteDto>> ReadLookupAsync(SqlConnection cn, string table, string[] codeCandidates, string[] descriptionCandidates, string[]? parentCandidates, CancellationToken ct)
+    {
+        await using var columns = new SqlCommand("SELECT name FROM sys.columns WHERE object_id=OBJECT_ID(@table)", cn);
+        columns.Parameters.Add("@table", SqlDbType.NVarChar, 128).Value = "dbo." + table;
+        await using var rd = await columns.ExecuteReaderAsync(ct);
+        var names = new List<string>();
+        while (await rd.ReadAsync(ct)) names.Add(rd.GetString(0));
+        await rd.CloseAsync();
+        if (names.Count == 0) throw new InvalidOperationException($"No existe la tabla de validación {table}.");
+        string Pick(string[] candidates, bool required = true)
+        {
+            var found = candidates.Select(candidate => names.FirstOrDefault(name => name.Equals(candidate, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(name => name is not null);
+            if (found is null && required) throw new InvalidOperationException($"No se reconocen las columnas de {table}.");
+            return found ?? string.Empty;
+        }
+        var code = Pick(codeCandidates);
+        var description = Pick(descriptionCandidates, false);
+        var parent = parentCandidates is null ? string.Empty : Pick(parentCandidates, false);
+        var descriptionSql = description.Length == 0 ? $"CONVERT(varchar(200),[{code}])" : $"ISNULL(CONVERT(varchar(200),[{description}]),CONVERT(varchar(200),[{code}]))";
+        var parentSql = parent.Length == 0 ? "NULL" : $"CONVERT(varchar(50),[{parent}])";
+        await using var query = new SqlCommand($"SELECT DISTINCT CONVERT(varchar(50),[{code}]),{descriptionSql},{parentSql} FROM dbo.[{table}] WHERE [{code}] IS NOT NULL ORDER BY 2", cn);
+        await using var values = await query.ExecuteReaderAsync(ct);
+        var result = new List<OpcionClienteDto>();
+        while (await values.ReadAsync(ct)) result.Add(new(Convert.ToString(values.GetValue(0))?.Trim() ?? string.Empty, Convert.ToString(values.GetValue(1))?.Trim() ?? string.Empty, values.IsDBNull(2) ? null : Convert.ToString(values.GetValue(2))?.Trim()));
+        return result;
+    }
+
     public async Task<IReadOnlyList<ClienteDto>> SearchClientsAsync(string? texto, string? zona, CancellationToken ct)
     {
         texto = texto?.Trim();
