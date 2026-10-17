@@ -8,8 +8,10 @@ RUN dotnet publish src/VoyPidiendo.SuperAdmin/VoyPidiendo.SuperAdmin.csproj -c R
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /out .
+COPY openssl-legacy.cnf /app/openssl-legacy.cnf
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_URLS=http://+:8080 \
-    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
+    OPENSSL_CONF=/app/openssl-legacy.cnf
 EXPOSE 8080
 ENTRYPOINT ["dotnet","VoyPidiendo.SuperAdmin.dll"]
