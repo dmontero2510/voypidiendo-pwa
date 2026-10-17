@@ -274,9 +274,14 @@ app.MapGet("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteC
         : Results.File(PedidoPdfGenerator.Generate(pedido, tenant.Subtotales), "application/pdf", $"Pedido_{prefijo:0000}-{remito:00000000}.pdf");
 }).RequireAuthorization(policy => policy.RequireRole("A", "P", "Q", "V"));
 
-app.MapPost("/api/pedidos", async (PedidoRequest pedido, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
+app.MapPost("/api/pedidos", async (PedidoRequest pedido, ClaimsPrincipal user, SqlServerRepository db, TenantContext tenant, CancellationToken ct) =>
 {
-    pedido = pedido with { Usuario = user.FindFirstValue("usuario") ?? user.Identity?.Name ?? "APP" };
+    var frioHabilitado = !tenant.Funciones.TryGetValue("Frio", out var permiteFrio) || permiteFrio;
+    pedido = pedido with
+    {
+        Usuario = user.FindFirstValue("usuario") ?? user.Identity?.Name ?? "APP",
+        Frio = frioHabilitado && pedido.Frio
+    };
     if (pedido.Organizacion <= 0 || pedido.ClienteCodigo <= 0 || pedido.Items.Count == 0 || string.IsNullOrWhiteSpace(pedido.Usuario))
         return Results.BadRequest(new { error = "Pedido incompleto" });
     if (pedido.Items.Any(x => x.Cantidad <= 0 || x.Precio < 0 ||

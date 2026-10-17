@@ -98,7 +98,7 @@
       <div class="filters">
         <label>Desde<input id="ordersFrom" type="date"></label>
         <label>Hasta<input id="ordersTo" type="date"></label>
-        <label>Zona<select id="ordersZone"><option value="">Todas</option></select></label>
+        <label data-feature="Zona">Zona<select id="ordersZone"><option value="">Todas</option></select></label>
         <label>Vendedor<select id="ordersSeller"><option value="">Todos</option></select></label>
         <div class="dashboard-client-picker"><label>Cliente<input id="ordersClient" autocomplete="off" placeholder="Código o nombre"></label><div id="ordersClientResults" class="product-results"></div></div>
         <label>Por página<select id="ordersLimit"><option value="10">10 pedidos</option><option value="25" selected>25 pedidos</option><option value="50">50 pedidos</option></select></label>
@@ -117,7 +117,7 @@
       <div class="filters">
         <label>Desde<input id="dashboardFrom" type="date"></label>
         <label>Hasta<input id="dashboardTo" type="date"></label>
-        <label>Zona<select id="dashboardZone"><option value="">Todas</option></select></label>
+        <label data-feature="Zona">Zona<select id="dashboardZone"><option value="">Todas</option></select></label>
         <div class="dashboard-client-picker"><label>Cliente<input id="dashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="dashboardClientResults" class="product-results"></div></div>
         <button id="refreshDashboard">Actualizar</button>
       </div>
@@ -138,7 +138,7 @@
         </div>
         <div class="dashboard-grid">
           <div class="dashboard-chart wide-chart"><h3>Evolución de ventas</h3><div id="salesTrend"></div></div>
-          <div class="dashboard-chart"><h3>Frío / Sin frío</h3><div id="coldChart" class="donut-layout"></div></div>
+          <div class="dashboard-chart" data-feature="Frio"><h3>Frío / Sin frío</h3><div id="coldChart" class="donut-layout"></div></div>
           <div class="dashboard-chart"><h3>Ventas por vendedor</h3><div id="sellerChart"></div></div>
           <div class="dashboard-chart"><h3>Ventas por rubro</h3><div id="categoryChart"></div></div>
           <div class="dashboard-chart"><h3>Ventas por marca</h3><div id="brandChart"></div></div>
@@ -149,7 +149,7 @@
       <div id="dashboardPercent" hidden>
         <p class="muted">Participación sobre el importe vendido con los filtros seleccionados.</p>
         <div class="participation-grid">
-          <div class="dashboard-chart"><h3>Participación por zona</h3><div id="zonePercentChart" class="pie-layout"></div></div>
+          <div class="dashboard-chart" data-feature="Zona"><h3>Participación por zona</h3><div id="zonePercentChart" class="pie-layout"></div></div>
           <div class="dashboard-chart"><h3>Participación por rubro</h3><div id="categoryPercentChart" class="pie-layout"></div></div>
           <div class="dashboard-chart"><h3>Participación por marca</h3><div id="brandPercentChart" class="pie-layout"></div></div>
           <div class="dashboard-chart"><h3>Participación por cliente</h3><div id="clientPercentChart" class="pie-layout"></div></div>
@@ -165,7 +165,7 @@
       <div class="filters">
         <label>Desde<input id="salesDashboardFrom" type="date"></label>
         <label>Hasta<input id="salesDashboardTo" type="date"></label>
-        <label>Zona<select id="salesDashboardZone"><option value="">Todas</option></select></label>
+        <label data-feature="Zona">Zona<select id="salesDashboardZone"><option value="">Todas</option></select></label>
         <div class="dashboard-client-picker"><label>Cliente<input id="salesDashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="salesDashboardClientResults" class="product-results"></div></div>
         <label>Vista<select id="salesDashboardOption"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></label>
         <button id="refreshSalesDashboard">Actualizar</button>
@@ -197,7 +197,7 @@
       <div class="section-title"><h2 id="annualDashboardTitle">Ventas Anuales (Cantidades)</h2><button class="secondary backAdmin">← Volver</button></div>
       <div class="filters">
         <label>Año<select id="annualDashboardYear"></select></label>
-        <label>Zona<select id="annualDashboardZone"><option value="">Todas</option></select></label>
+        <label data-feature="Zona">Zona<select id="annualDashboardZone"><option value="">Todas</option></select></label>
         <div class="dashboard-client-picker"><label>Cliente<input id="annualDashboardClient" autocomplete="off" placeholder="Código o nombre"></label><div id="annualDashboardClientResults" class="product-results"></div></div>
         <label>Vista<select id="annualDashboardOption"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></label>
         <label>Mostrar<select id="annualDashboardLimit"><option>10</option><option selected>20</option><option>40</option><option>50</option><option>100</option></select></label>
@@ -231,8 +231,8 @@
       <div class="order-header-meta">
         <select id="zone" hidden><option value="">Todas las zonas</option></select>
         <label class="budget-header">Tope del cliente<input id="budget" type="text" inputmode="decimal" placeholder="$ 0,00"></label>
-        <label class="switch"><input id="cold" type="checkbox"><span>Frío</span></label>
-        <label class="switch"><input id="multipleLoad" type="checkbox" checked><span>Carga múltiple</span></label>
+        <label class="switch" data-feature="Frio"><input id="cold" type="checkbox"><span>Frío</span></label>
+        <label class="switch" data-feature="CargaMultiple"><input id="multipleLoad" type="checkbox" checked><span>Carga múltiple</span></label>
         <div><span class="label">Fecha</span><strong id="orderDate"></strong></div>
         <span id="orderHeaderLock" class="header-lock" hidden>🔒 Datos fijos mientras haya artículos</span>
       </div>
