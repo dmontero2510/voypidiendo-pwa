@@ -454,11 +454,11 @@ public sealed class SqlServerRepository(TenantContext tenant)
         await using var cn = CreateConnection();
         await cn.OpenAsync(ct);
         return new(
-            await ReadLookupAsync(cn, "GSTIPOIVA", ["IVA", "TIPOIVA", "CODIGO"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
-            await ReadLookupAsync(cn, "EXPROVINCIA", ["PCIA", "CODIGO", "COD_PROVINCIA"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
-            await ReadLookupAsync(cn, "EXLOCALIDAD", ["LOCALI", "CODIGO", "COD_LOCALIDAD"], ["DETALLE", "DESCRIPCION", "NOMBRE"], ["PCIA", "PROVINCIA", "COD_PROVINCIA"], ct),
-            await ReadLookupAsync(cn, "GSZONA", ["ZONA", "CODIGO", "COD_ZONA"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct),
-            await ReadLookupAsync(cn, "TATIPDOC", ["CAEDOC", "TIPODOC", "CODIGO"], ["DETALLE", "DESCRIPCION", "NOMBRE"], null, ct));
+            await ReadLookupAsync(cn, "GSTIPOIVA", ["TIPIVA", "IVA", "TIPOIVA", "TIPO_IVA", "CODIGO", "COD_IVA"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
+            await ReadLookupAsync(cn, "EXPROVINCIA", ["PCIA", "CODIGO", "COD_PROV", "COD_PROVINCIA"], ["PROVINCIA", "DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
+            await ReadLookupAsync(cn, "EXLOCALIDAD", ["LOCALI", "CODIGO", "COD_LOC", "COD_LOCALIDAD"], ["LOCALIDAD", "DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], ["PCIA", "PROVINCIA", "COD_PROV", "COD_PROVINCIA"], ct),
+            await ReadLookupAsync(cn, "GSZONA", ["ZONA", "CODIGO", "COD_ZONA"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
+            await ReadLookupAsync(cn, "TATIPDOC", ["CAEDOC", "TIPDOC", "TIPODOC", "CODIGO", "COD_DOC"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct));
     }
 
     public async Task<IReadOnlyList<ClienteGestionDto>> SearchManagedClientsAsync(string? texto, CancellationToken ct)
