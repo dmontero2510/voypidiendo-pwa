@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 
 namespace VoyPidiendo.Api;
@@ -10,21 +11,22 @@ public static class PedidoPdfGenerator
     private const double PageHeight = 841.89;
     private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
 
-    public static byte[] Generate(PedidoPdfData pedido, bool mostrarSubtotales = true)
+    public static byte[] Generate(PedidoPdfData pedido, bool mostrarSubtotales = true, byte[]? logoPng = null)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var pages = BuildPages(pedido, mostrarSubtotales);
-        return BuildDocument(pages);
+        var logo = TryDecodePng(logoPng);
+        var pages = BuildPages(pedido, mostrarSubtotales, logo);
+        return BuildDocument(pages, logo);
     }
 
-    private static List<string> BuildPages(PedidoPdfData pedido, bool mostrarSubtotales)
+    private static List<string> BuildPages(PedidoPdfData pedido, bool mostrarSubtotales, PdfImage? logo)
     {
         var pages = new List<string>();
         var index = 0;
         do
         {
             var s = new StringBuilder();
-            Header(s, pedido, pages.Count + 1);
+            Header(s, pedido, pages.Count + 1, logo);
             var y = pages.Count == 0 ? 218d : 172d;
             TableHeader(s, y);
             y += 25;
@@ -49,12 +51,26 @@ public static class PedidoPdfGenerator
         return pages;
     }
 
-    private static void Header(StringBuilder s, PedidoPdfData p, int page)
+    private static void Header(StringBuilder s, PedidoPdfData p, int page, PdfImage? logo)
     {
         Line(s, 22, 34, 350, 34, 0, 0, 0, 2);
-        Text(s, p.Empresa, 22, 61, 18, true, 0, 0, 0);
-        if (!string.IsNullOrWhiteSpace(p.EmpresaDireccion)) Text(s, p.EmpresaDireccion, 22, 81, 9, false, 0, 0, 0);
-        if (!string.IsNullOrWhiteSpace(p.EmpresaCuit)) Text(s, $"CUIT: {p.EmpresaCuit}", 22, 98, 9, false, 0, 0, 0);
+        if (logo is not null)
+        {
+            const double maxWidth = 195;
+            const double maxHeight = 65;
+            var scale = Math.Min(maxWidth / logo.Width, maxHeight / logo.Height);
+            var logoWidth = logo.Width * scale;
+            var logoHeight = logo.Height * scale;
+            Image(s, 22, 39 + (maxHeight - logoHeight) / 2, logoWidth, logoHeight);
+            if (!string.IsNullOrWhiteSpace(p.EmpresaDireccion)) Text(s, p.EmpresaDireccion, 230, 64, 8, false, 0, 0, 0);
+            if (!string.IsNullOrWhiteSpace(p.EmpresaCuit)) Text(s, $"CUIT: {p.EmpresaCuit}", 230, 80, 8, false, 0, 0, 0);
+        }
+        else
+        {
+            Text(s, p.Empresa, 22, 61, 18, true, 0, 0, 0);
+            if (!string.IsNullOrWhiteSpace(p.EmpresaDireccion)) Text(s, p.EmpresaDireccion, 22, 81, 9, false, 0, 0, 0);
+            if (!string.IsNullOrWhiteSpace(p.EmpresaCuit)) Text(s, $"CUIT: {p.EmpresaCuit}", 22, 98, 9, false, 0, 0, 0);
+        }
         Text(s, "Nº PEDIDO", 380, 58, 16, true, 0, 0, 0);
         TextRight(s, OrderNumber(p), 573, 58, 12, true);
         Text(s, "FECHA", 408, 84, 16, true, 0, 0, 0);
@@ -155,24 +171,35 @@ public static class PedidoPdfGenerator
         s.AppendFormat(CultureInfo.InvariantCulture, "{0:0.###} {1:0.###} {2:0.###} RG {3:0.##} w {4:0.##} {5:0.##} m {6:0.##} {7:0.##} l S\n", r, g, b, width, x1, PdfY(y1), x2, PdfY(y2));
     private static void FillRect(StringBuilder s, double x, double top, double width, double height, double r, double g, double b) =>
         s.AppendFormat(CultureInfo.InvariantCulture, "{0:0.###} {1:0.###} {2:0.###} rg {3:0.##} {4:0.##} {5:0.##} {6:0.##} re f\n", r, g, b, x, PdfY(top + height), width, height);
+    private static void Image(StringBuilder s, double x, double top, double width, double height) =>
+        s.AppendFormat(CultureInfo.InvariantCulture, "q {0:0.##} 0 0 {1:0.##} {2:0.##} {3:0.##} cm /Logo Do Q\n", width, height, x, PdfY(top + height));
 
-    private static byte[] BuildDocument(List<string> pages)
+    private static byte[] BuildDocument(List<string> pages, PdfImage? logo)
     {
         var enc = Encoding.GetEncoding(1252);
         var objects = new Dictionary<int, byte[]>();
         objects[1] = enc.GetBytes("<< /Type /Catalog /Pages 2 0 R >>");
         objects[3] = enc.GetBytes("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
         objects[4] = enc.GetBytes("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+        var nextId = 5;
+        var logoId = 0;
+        if (logo is not null)
+        {
+            logoId = nextId++;
+            var head = enc.GetBytes($"<< /Type /XObject /Subtype /Image /Width {logo.Width} /Height {logo.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {logo.Data.Length} >>\nstream\n");
+            objects[logoId] = head.Concat(logo.Data).Concat(enc.GetBytes("\nendstream")).ToArray();
+        }
         var kids = new List<string>();
         for (var i = 0; i < pages.Count; i++)
         {
-            var contentId = 5 + i * 2;
-            var pageId = contentId + 1;
+            var contentId = nextId++;
+            var pageId = nextId++;
             var content = enc.GetBytes(pages[i]);
             var head = enc.GetBytes($"<< /Length {content.Length} >>\nstream\n");
             var tail = enc.GetBytes("\nendstream");
             objects[contentId] = head.Concat(content).Concat(tail).ToArray();
-            objects[pageId] = enc.GetBytes($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PageWidth.ToString(CultureInfo.InvariantCulture)} {PageHeight.ToString(CultureInfo.InvariantCulture)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {contentId} 0 R >>");
+            var xObject = logoId > 0 ? $" /XObject << /Logo {logoId} 0 R >>" : string.Empty;
+            objects[pageId] = enc.GetBytes($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PageWidth.ToString(CultureInfo.InvariantCulture)} {PageHeight.ToString(CultureInfo.InvariantCulture)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>{xObject} >> /Contents {contentId} 0 R >>");
             kids.Add($"{pageId} 0 R");
         }
         objects[2] = enc.GetBytes($"<< /Type /Pages /Kids [{string.Join(' ', kids)}] /Count {pages.Count} >>");
@@ -190,5 +217,88 @@ public static class PedidoPdfGenerator
         for (var id = 1; id <= objects.Count; id++) Write($"{offsets[id]:0000000000} 00000 n \n");
         Write($"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF");
         return output.ToArray();
+    }
+
+    private sealed record PdfImage(int Width, int Height, byte[] Data);
+
+    private static PdfImage? TryDecodePng(byte[]? png)
+    {
+        try
+        {
+            if (png is null || png.Length < 33 || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return null;
+            var width = ReadInt32(png, 16);
+            var height = ReadInt32(png, 20);
+            var bitDepth = png[24];
+            var colorType = png[25];
+            if (width <= 0 || height <= 0 || bitDepth != 8 || colorType is not (2 or 6) || png[28] != 0) return null;
+            using var idat = new MemoryStream();
+            var offset = 8;
+            while (offset + 12 <= png.Length)
+            {
+                var length = ReadInt32(png, offset);
+                if (length < 0 || offset + 12 + length > png.Length) return null;
+                var type = Encoding.ASCII.GetString(png, offset + 4, 4);
+                if (type == "IDAT") idat.Write(png, offset + 8, length);
+                offset += 12 + length;
+                if (type == "IEND") break;
+            }
+            idat.Position = 0;
+            using var inflated = new MemoryStream();
+            using (var zlib = new ZLibStream(idat, CompressionMode.Decompress, true)) zlib.CopyTo(inflated);
+            var source = inflated.ToArray();
+            var channels = colorType == 6 ? 4 : 3;
+            var stride = checked(width * channels);
+            if (source.Length != checked((stride + 1) * height)) return null;
+            var previous = new byte[stride];
+            var current = new byte[stride];
+            var rgb = new byte[checked(width * height * 3)];
+            var sourceOffset = 0;
+            var rgbOffset = 0;
+            for (var y = 0; y < height; y++)
+            {
+                var filter = source[sourceOffset++];
+                for (var x = 0; x < stride; x++)
+                {
+                    var raw = source[sourceOffset++];
+                    var left = x >= channels ? current[x - channels] : (byte)0;
+                    var up = previous[x];
+                    var upperLeft = x >= channels ? previous[x - channels] : (byte)0;
+                    current[x] = filter switch
+                    {
+                        0 => raw,
+                        1 => (byte)(raw + left),
+                        2 => (byte)(raw + up),
+                        3 => (byte)(raw + ((left + up) >> 1)),
+                        4 => (byte)(raw + Paeth(left, up, upperLeft)),
+                        _ => throw new InvalidDataException("Filtro PNG no soportado.")
+                    };
+                }
+                for (var x = 0; x < width; x++)
+                {
+                    var pixel = x * channels;
+                    var alpha = channels == 4 ? current[pixel + 3] : (byte)255;
+                    rgb[rgbOffset++] = BlendWhite(current[pixel], alpha);
+                    rgb[rgbOffset++] = BlendWhite(current[pixel + 1], alpha);
+                    rgb[rgbOffset++] = BlendWhite(current[pixel + 2], alpha);
+                }
+                (previous, current) = (current, previous);
+            }
+            using var compressed = new MemoryStream();
+            using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, true)) zlib.Write(rgb);
+            return new PdfImage(width, height, compressed.ToArray());
+        }
+        catch { return null; }
+    }
+
+    private static int ReadInt32(byte[] bytes, int offset) =>
+        (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+    private static byte BlendWhite(byte color, byte alpha) => (byte)((color * alpha + 255 * (255 - alpha) + 127) / 255);
+    private static byte Paeth(byte left, byte up, byte upperLeft)
+    {
+        var prediction = left + up - upperLeft;
+        var leftDistance = Math.Abs(prediction - left);
+        var upDistance = Math.Abs(prediction - up);
+        var upperLeftDistance = Math.Abs(prediction - upperLeft);
+        return leftDistance <= upDistance && leftDistance <= upperLeftDistance ? left : upDistance <= upperLeftDistance ? up : upperLeft;
     }
 }

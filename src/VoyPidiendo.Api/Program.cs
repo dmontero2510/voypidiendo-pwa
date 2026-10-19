@@ -281,13 +281,20 @@ app.MapDelete("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clien
     };
 }).RequireAuthorization(policy => policy.RequireRole("V"));
 
-app.MapGet("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}/pdf", async (int organizacion, int prefijo, int remito, int clienteCodigo, ClaimsPrincipal user, SqlServerRepository db, TenantContext tenant, CancellationToken ct) =>
+app.MapGet("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}/pdf", async (int organizacion, int prefijo, int remito, int clienteCodigo, ClaimsPrincipal user, SqlServerRepository db, TenantContext tenant, IWebHostEnvironment environment, CancellationToken ct) =>
 {
     var vendedor = user.IsInRole("V") ? user.FindFirstValue("usuario") : null;
     var pedido = await db.GetOrderPdfDataAsync(organizacion, prefijo, remito, clienteCodigo, vendedor, ct);
+    byte[]? logo = null;
+    if (pedido is not null && tenant.Logo.StartsWith('/') && !tenant.Logo.Equals("/icons/icon.svg", StringComparison.OrdinalIgnoreCase))
+    {
+        var webRoot = Path.GetFullPath(environment.WebRootPath) + Path.DirectorySeparatorChar;
+        var logoPath = Path.GetFullPath(Path.Combine(environment.WebRootPath, tenant.Logo.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+        if (logoPath.StartsWith(webRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(logoPath)) logo = await File.ReadAllBytesAsync(logoPath, ct);
+    }
     return pedido is null
         ? Results.NotFound()
-        : Results.File(PedidoPdfGenerator.Generate(pedido, tenant.Subtotales), "application/pdf", $"Pedido_{prefijo:0000}-{remito:00000000}.pdf");
+        : Results.File(PedidoPdfGenerator.Generate(pedido, tenant.Subtotales, logo), "application/pdf", $"Pedido_{prefijo:0000}-{remito:00000000}.pdf");
 }).RequireAuthorization(policy => policy.RequireRole("A", "P", "Q", "V"));
 
 app.MapPost("/api/pedidos", async (PedidoRequest pedido, ClaimsPrincipal user, SqlServerRepository db, TenantContext tenant, CancellationToken ct) =>
