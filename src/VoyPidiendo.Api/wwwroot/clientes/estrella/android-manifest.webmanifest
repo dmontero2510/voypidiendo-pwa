@@ -1,0 +1,20 @@
+{
+  "id": "https://estrella.voypidiendo.net.ar/",
+  "name": "La Estrella Pedidos",
+  "short_name": "La Estrella",
+  "description": "Aplicación de pedidos de Distribuciones La Estrella",
+  "start_url": "https://estrella.voypidiendo.net.ar/",
+  "scope": "https://estrella.voypidiendo.net.ar/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#10172f",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

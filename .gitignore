@@ -13,3 +13,13 @@ appsettings.Production.json
 deploy/.env
 deploy/backups/
 deploy/logs/
+# Firma privada de las aplicaciones Android
+android/**/private/
+android/**/.gradle/
+android/**/build/
+android/**/app/build/
+android/**/app-release-signed.apk
+android/**/app-release-bundle.aab
+android/tools/
+android/sdk-compat/
+output/

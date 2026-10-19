@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ar.net.voypidiendo.estrella",
+      "sha256_cert_fingerprints": [
+        "F2:87:F8:06:99:C8:7E:56:1B:36:12:17:8D:9F:6D:6E:F5:90:E5:94:1C:6D:33:9D:5F:25:A6:A8:E0:9A:A5:AE"
+      ]
+    }
+  }
+]
