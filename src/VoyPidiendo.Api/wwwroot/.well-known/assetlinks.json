@@ -10,5 +10,17 @@
         "F2:87:F8:06:99:C8:7E:56:1B:36:12:17:8D:9F:6D:6E:F5:90:E5:94:1C:6D:33:9D:5F:25:A6:A8:E0:9A:A5:AE"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ar.net.voypidiendo.fgdistri",
+      "sha256_cert_fingerprints": [
+        "04:4C:1A:C8:BD:F6:39:ED:54:1D:A2:5E:1D:7B:91:13:39:BD:1C:F9:02:30:1A:3D:8E:60:63:24:BE:EB:99:C3"
+      ]
+    }
   }
 ]
