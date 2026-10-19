@@ -11,10 +11,10 @@ public static class PedidoPdfGenerator
     private const double PageHeight = 841.89;
     private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
 
-    public static byte[] Generate(PedidoPdfData pedido, bool mostrarSubtotales = true, byte[]? logoPng = null)
+    public static byte[] Generate(PedidoPdfData pedido, bool mostrarSubtotales = true, byte[]? logoBytes = null)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var logo = TryDecodePng(logoPng);
+        var logo = TryDecodeImage(logoBytes);
         var pages = BuildPages(pedido, mostrarSubtotales, logo);
         return BuildDocument(pages, logo);
     }
@@ -186,7 +186,7 @@ public static class PedidoPdfGenerator
         if (logo is not null)
         {
             logoId = nextId++;
-            var head = enc.GetBytes($"<< /Type /XObject /Subtype /Image /Width {logo.Width} /Height {logo.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {logo.Data.Length} >>\nstream\n");
+            var head = enc.GetBytes($"<< /Type /XObject /Subtype /Image /Width {logo.Width} /Height {logo.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /{logo.Filter} /Length {logo.Data.Length} >>\nstream\n");
             objects[logoId] = head.Concat(logo.Data).Concat(enc.GetBytes("\nendstream")).ToArray();
         }
         var kids = new List<string>();
@@ -219,7 +219,43 @@ public static class PedidoPdfGenerator
         return output.ToArray();
     }
 
-    private sealed record PdfImage(int Width, int Height, byte[] Data);
+    private sealed record PdfImage(int Width, int Height, byte[] Data, string Filter);
+
+    private static PdfImage? TryDecodeImage(byte[]? bytes)
+    {
+        if (bytes is null) return null;
+        return TryReadJpeg(bytes) ?? TryDecodePng(bytes);
+    }
+
+    private static PdfImage? TryReadJpeg(byte[] jpeg)
+    {
+        try
+        {
+            if (jpeg.Length < 4 || jpeg[0] != 0xff || jpeg[1] != 0xd8) return null;
+            var offset = 2;
+            while (offset + 4 <= jpeg.Length)
+            {
+                while (offset < jpeg.Length && jpeg[offset] != 0xff) offset++;
+                while (offset < jpeg.Length && jpeg[offset] == 0xff) offset++;
+                if (offset >= jpeg.Length) return null;
+                var marker = jpeg[offset++];
+                if (marker is 0xd8 or 0xd9 || marker is >= 0xd0 and <= 0xd7) continue;
+                if (offset + 2 > jpeg.Length) return null;
+                var length = (jpeg[offset] << 8) | jpeg[offset + 1];
+                if (length < 2 || offset + length > jpeg.Length) return null;
+                if (marker is >= 0xc0 and <= 0xc3 or >= 0xc5 and <= 0xc7 or >= 0xc9 and <= 0xcb or >= 0xcd and <= 0xcf)
+                {
+                    if (length < 8 || jpeg[offset + 7] != 3) return null;
+                    var height = (jpeg[offset + 3] << 8) | jpeg[offset + 4];
+                    var width = (jpeg[offset + 5] << 8) | jpeg[offset + 6];
+                    return width > 0 && height > 0 ? new PdfImage(width, height, jpeg, "DCTDecode") : null;
+                }
+                offset += length;
+            }
+            return null;
+        }
+        catch { return null; }
+    }
 
     private static PdfImage? TryDecodePng(byte[]? png)
     {
@@ -285,7 +321,7 @@ public static class PedidoPdfGenerator
             }
             using var compressed = new MemoryStream();
             using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, true)) zlib.Write(rgb);
-            return new PdfImage(width, height, compressed.ToArray());
+            return new PdfImage(width, height, compressed.ToArray(), "FlateDecode");
         }
         catch { return null; }
     }
