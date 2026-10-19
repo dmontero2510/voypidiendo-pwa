@@ -105,7 +105,7 @@
 
 @media (max-width:760px){
   .brand-heading.custom-brand .tenant-logo{width:min(460px,78vw);height:64px}
-  .client-management-search{align-items:stretch;flex-direction:column}.client-form-grid{grid-template-columns:1fr 1fr}.client-field-wide{grid-column:1/-1}.client-form-actions button{flex:1}.session-actions{width:100%;justify-content:stretch}.session-actions button{flex:1;padding:10px 8px;font-size:12px}
+  .client-management-search{align-items:stretch;flex-direction:column}.client-form-grid{grid-template-columns:1fr 1fr}.client-field-wide{grid-column:1/-1}.client-form-actions button{flex:1}.session-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}.session-actions button{width:100%;padding:10px 6px;font-size:12px}
   #adminOrders{padding:13px}
   #adminOrders .orders-table-wrap{overflow:visible}
   #adminOrders .orders-table,#adminOrders .orders-table tbody{display:block;width:100%}

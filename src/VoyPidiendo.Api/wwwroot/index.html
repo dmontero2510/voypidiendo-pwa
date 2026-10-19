@@ -9,15 +9,14 @@
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=4">
   <link rel="stylesheet" href="search-results.css?v=4">
-  <link rel="stylesheet" href="admin.css?v=11">
-  <link rel="stylesheet" href="voyllegando-theme.css?v=9">
+  <link rel="stylesheet" href="admin.css?v=12">
+  <link rel="stylesheet" href="voyllegando-theme.css?v=10">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
   <main class="page">
     <header>
       <div id="brandHeading" class="brand-heading"><img id="tenantLogo" class="tenant-logo" src="/icons/icon.svg" alt=""><div class="brand-copy"><span id="appSubtitle" class="eyebrow">TOMA DE PEDIDOS</span><h1 id="appTitle">Voy Pidiendo</h1></div></div>
-      <button id="syncButton" class="secondary">↻ Sincronizar</button>
     </header>
 
     <section id="connectionCard" class="card connection">
@@ -31,7 +30,7 @@
       </div>
       <div id="sessionPanel" hidden class="section-title">
         <strong id="sessionUser"></strong>
-        <div class="session-actions"><button id="showClientManagement" class="secondary">👤 Alta de clientes</button><button id="showClientLocations" class="secondary">📍 Ubicaciones</button><button id="logoutButton" class="secondary">Cerrar sesión</button></div>
+        <div class="session-actions"><button id="syncButton" class="secondary">↻ Sincronizar</button><button id="showClientManagement" class="secondary">👤 Alta de clientes</button><button id="showClientLocations" class="secondary">📍 Ubicaciones</button><button id="logoutButton" class="secondary">Cerrar sesión</button></div>
       </div>
       <p id="status" class="muted">Ingresá con tu usuario y contraseña.</p>
     </section>

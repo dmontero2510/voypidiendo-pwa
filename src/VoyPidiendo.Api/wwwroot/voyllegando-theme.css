@@ -159,7 +159,8 @@ button:hover { filter: none; background: var(--vp-brand-hover); transform: trans
   .selected-product-row .quantity-row { justify-content: flex-end; }
   .order-actions { grid-template-columns: 1fr; }
   .visit-panel, .visit-actions { align-items: stretch; flex-direction: column; }
-  .session-actions, .location-coordinates { align-items: stretch; flex-direction: column; }
+  .session-actions { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; }
+  .location-coordinates { align-items: stretch; flex-direction: column; }
   .client-location-tools { grid-template-columns: 1fr; }
   #lines { display: block; }
   .cart-table thead { display: none; }
