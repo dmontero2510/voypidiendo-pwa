@@ -302,6 +302,236 @@ public sealed class SqlServerRepository(TenantContext tenant)
         }
     }
 
+    public async Task<(string Status, PedidoEdicionDto? Pedido)> BeginOrderEditAsync(int organizacion, int prefijo, int remito, int clienteCodigo, string vendedor, CancellationToken ct)
+    {
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
+        {
+            var status = await GetOrderEditStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, vendedor, "R", ct);
+            if (status == "locked")
+                status = await GetOrderEditStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, vendedor, "X", ct);
+            if (status != "ok")
+            {
+                await tx.RollbackAsync(ct);
+                return (status, null);
+            }
+
+            await SetOrderStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, "X", ct);
+            var pedido = await ReadOrderForEditAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, ct);
+            await tx.CommitAsync(ct);
+            return pedido is null ? ("notfound", null) : ("ok", pedido);
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<string> CancelOrderEditAsync(int organizacion, int prefijo, int remito, int clienteCodigo, string vendedor, CancellationToken ct)
+    {
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
+        {
+            var status = await GetOrderEditStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, vendedor, "X", ct);
+            if (status == "locked")
+                status = await GetOrderEditStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, vendedor, "R", ct);
+            if (status != "ok")
+            {
+                await tx.RollbackAsync(ct);
+                return status;
+            }
+
+            await SetOrderStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, "R", ct);
+            await tx.CommitAsync(ct);
+            return "ok";
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<(string Status, PedidoResponse? Pedido)> UpdateOrderAsync(int organizacion, int prefijo, int remito, int clienteCodigo, string vendedor, PedidoRequest pedido, CancellationToken ct)
+    {
+        await using var cn = CreateConnection();
+        await cn.OpenAsync(ct);
+        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
+        {
+            var status = await GetOrderEditStatusAsync(cn, tx, organizacion, prefijo, remito, clienteCodigo, vendedor, "X", ct);
+            if (status != "ok")
+            {
+                await tx.RollbackAsync(ct);
+                return (status, null);
+            }
+
+            await using var readDate = new SqlCommand("SELECT FECHA FROM dbo.STREMITOS WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente", cn, tx);
+            AddOrderKeyParameters(readDate, organizacion, prefijo, remito, clienteCodigo);
+            var fecha = Convert.ToInt32(await readDate.ExecuteScalarAsync(ct));
+            var now = DateTime.Now;
+            var auditDate = now.Year * 10000 + now.Month * 100 + now.Day;
+            var auditTime = now.Hour * 10000 + now.Minute * 100 + now.Second;
+            var usuario = vendedor.Trim();
+            if (usuario.Length > 10) usuario = usuario[..10];
+            var observa = string.IsNullOrWhiteSpace(pedido.Observacion) ? null : pedido.Observacion.Trim();
+            if (observa?.Length > 50) observa = observa[..50];
+
+            var calculated = pedido.Items.Select(item =>
+            {
+                var preVta = Math.Round(item.Precio / (1m + item.Alic / 100m), 2, MidpointRounding.AwayFromZero);
+                var subTotal = Math.Round(item.Cantidad * preVta, 2, MidpointRounding.AwayFromZero);
+                var total = Math.Round(item.Cantidad * item.Precio, 2, MidpointRounding.AwayFromZero);
+                return new { Item = item, PreVta = preVta, SubTotal = subTotal, Iva = total - subTotal, Total = total };
+            }).ToList();
+            var subTotalPedido = calculated.Sum(x => x.SubTotal);
+            var ivaPedido = calculated.Sum(x => x.Iva);
+            var totalPedido = calculated.Sum(x => x.Total);
+
+            await using (var deleteDetail = new SqlCommand("DELETE dbo.STREMITOSDET WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente", cn, tx))
+            {
+                AddOrderKeyParameters(deleteDetail, organizacion, prefijo, remito, clienteCodigo);
+                await deleteDetail.ExecuteNonQueryAsync(ct);
+            }
+
+            const string detailSql = """
+                INSERT INTO dbo.STREMITOSDET
+                (ORGANIZACION, PREF, REMITO, COD_CLIENTE, COD_ARTICULO, NROREP, MARCA,
+                 FECMOV, CANTIDAD, DESCRIPCION, CANTIDEV, PREUNI, PREVTA, SUB_TOTAL,
+                 ALIC, IMP_RESP, IMP_TOTAL, OBSERVA, ESTADO, FACTURA, AUD_FEC, AUD_HOR,
+                 AUD_USR, NROPED, FACCON, UNIMED, TIPO_REMITO, STOCK, PED_USR)
+                VALUES
+                (@org, @pref, @remito, @cliente, @articulo, '1', '1',
+                 @fecha, @cantidad, @descripcion, 0, @preuni, @prevta, @subtotal,
+                 @alic, @iva, @total, @observa, 'R', NULL, @auditDate, @auditTime,
+                 'APP', 0, 1, 'Uni', 'VE', '0', @usuario)
+                """;
+            foreach (var line in calculated)
+            {
+                await using var detail = new SqlCommand(detailSql, cn, tx);
+                AddOrderKeyParameters(detail, organizacion, prefijo, remito, clienteCodigo);
+                detail.Parameters.Add("@articulo", SqlDbType.Int).Value = line.Item.ProductoCodigo;
+                detail.Parameters.Add("@fecha", SqlDbType.Int).Value = fecha;
+                detail.Parameters.Add("@cantidad", SqlDbType.Float).Value = line.Item.Cantidad;
+                detail.Parameters.Add("@descripcion", SqlDbType.VarChar, 255).Value = line.Item.Descripcion.Length > 255 ? line.Item.Descripcion[..255] : line.Item.Descripcion;
+                detail.Parameters.Add("@preuni", SqlDbType.Float).Value = line.Item.Precio;
+                detail.Parameters.Add("@prevta", SqlDbType.Float).Value = line.PreVta;
+                detail.Parameters.Add("@subtotal", SqlDbType.Float).Value = line.SubTotal;
+                detail.Parameters.Add("@alic", SqlDbType.Float).Value = line.Item.Alic;
+                detail.Parameters.Add("@iva", SqlDbType.Float).Value = line.Iva;
+                detail.Parameters.Add("@total", SqlDbType.Float).Value = line.Total;
+                detail.Parameters.Add("@observa", SqlDbType.VarChar, 50).Value = (object?)observa ?? DBNull.Value;
+                detail.Parameters.Add("@auditDate", SqlDbType.Int).Value = auditDate;
+                detail.Parameters.Add("@auditTime", SqlDbType.Int).Value = auditTime;
+                detail.Parameters.Add("@usuario", SqlDbType.VarChar, 10).Value = usuario;
+                await detail.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var updateHeader = new SqlCommand("""
+                UPDATE dbo.STREMITOS
+                SET OBSERVA=@observa, SUB_TOTAL=@subtotal, IMP_RESP=@iva, IMP_TOTAL=@total,
+                    ESTADO='R', AUD_FEC=@auditDate, AUD_HOR=@auditTime, AUD_USR='APP'
+                WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
+                  AND PED_USR=@vendedor AND ESTADO='X'
+                """, cn, tx))
+            {
+                AddOrderKeyParameters(updateHeader, organizacion, prefijo, remito, clienteCodigo);
+                updateHeader.Parameters.Add("@observa", SqlDbType.VarChar, 50).Value = (object?)observa ?? DBNull.Value;
+                updateHeader.Parameters.Add("@subtotal", SqlDbType.Float).Value = subTotalPedido;
+                updateHeader.Parameters.Add("@iva", SqlDbType.Float).Value = ivaPedido;
+                updateHeader.Parameters.Add("@total", SqlDbType.Float).Value = totalPedido;
+                updateHeader.Parameters.Add("@auditDate", SqlDbType.Int).Value = auditDate;
+                updateHeader.Parameters.Add("@auditTime", SqlDbType.Int).Value = auditTime;
+                updateHeader.Parameters.Add("@vendedor", SqlDbType.VarChar, 50).Value = vendedor;
+                if (await updateHeader.ExecuteNonQueryAsync(ct) != 1)
+                {
+                    await tx.RollbackAsync(ct);
+                    return ("locked", null);
+                }
+            }
+
+            await tx.CommitAsync(ct);
+            return ("ok", new(organizacion, prefijo, remito, subTotalPedido, ivaPedido, totalPedido));
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static async Task<string> GetOrderEditStatusAsync(SqlConnection cn, SqlTransaction tx, int organizacion, int prefijo, int remito, int clienteCodigo, string vendedor, string? requiredState, CancellationToken ct)
+    {
+        await using var check = new SqlCommand("""
+            SELECT CASE
+                WHEN NOT EXISTS (SELECT 1 FROM dbo.STREMITOS WITH (UPDLOCK,HOLDLOCK)
+                                 WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente) THEN 'notfound'
+                WHEN NOT EXISTS (SELECT 1 FROM dbo.STREMITOS
+                                 WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente AND PED_USR=@vendedor) THEN 'forbidden'
+                WHEN EXISTS (SELECT 1 FROM dbo.STREMITOSDET
+                             WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
+                               AND LTRIM(RTRIM(ISNULL(FACTURA,'')))<>'') THEN 'billed'
+                WHEN @requiredState IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.STREMITOS
+                             WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
+                               AND ISNULL(ESTADO,'')<>@requiredState) THEN 'locked'
+                WHEN @requiredState IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.STREMITOSDET
+                             WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
+                               AND ISNULL(ESTADO,'')<>@requiredState) THEN 'locked'
+                ELSE 'ok' END
+            """, cn, tx);
+        AddOrderKeyParameters(check, organizacion, prefijo, remito, clienteCodigo);
+        check.Parameters.Add("@vendedor", SqlDbType.VarChar, 50).Value = vendedor;
+        check.Parameters.Add("@requiredState", SqlDbType.VarChar, 1).Value = (object?)requiredState ?? DBNull.Value;
+        return Convert.ToString(await check.ExecuteScalarAsync(ct)) ?? "notfound";
+    }
+
+    private static async Task SetOrderStatusAsync(SqlConnection cn, SqlTransaction tx, int organizacion, int prefijo, int remito, int clienteCodigo, string status, CancellationToken ct)
+    {
+        await using var detail = new SqlCommand("UPDATE dbo.STREMITOSDET SET ESTADO=@status WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente", cn, tx);
+        AddOrderKeyParameters(detail, organizacion, prefijo, remito, clienteCodigo);
+        detail.Parameters.Add("@status", SqlDbType.VarChar, 1).Value = status;
+        await detail.ExecuteNonQueryAsync(ct);
+        await using var header = new SqlCommand("UPDATE dbo.STREMITOS SET ESTADO=@status WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente", cn, tx);
+        AddOrderKeyParameters(header, organizacion, prefijo, remito, clienteCodigo);
+        header.Parameters.Add("@status", SqlDbType.VarChar, 1).Value = status;
+        await header.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<PedidoEdicionDto?> ReadOrderForEditAsync(SqlConnection cn, SqlTransaction tx, int organizacion, int prefijo, int remito, int clienteCodigo, CancellationToken ct)
+    {
+        int fecha;
+        string observa;
+        await using (var header = new SqlCommand("SELECT FECHA,ISNULL(OBSERVA,'') FROM dbo.STREMITOS WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente", cn, tx))
+        {
+            AddOrderKeyParameters(header, organizacion, prefijo, remito, clienteCodigo);
+            await using var rd = await header.ExecuteReaderAsync(ct);
+            if (!await rd.ReadAsync(ct)) return null;
+            fecha = rd.IsDBNull(0) ? 0 : Convert.ToInt32(rd.GetValue(0));
+            observa = rd.IsDBNull(1) ? string.Empty : Convert.ToString(rd.GetValue(1))?.Trim() ?? string.Empty;
+        }
+        var items = new List<PedidoDetalleDto>();
+        await using (var detail = new SqlCommand("SELECT COD_ARTICULO,ISNULL(DESCRIPCION,''),ISNULL(CANTIDAD,0),ISNULL(PREUNI,0),ISNULL(ALIC,0),ISNULL(IMP_TOTAL,0) FROM dbo.STREMITOSDET WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente ORDER BY NRO_ID", cn, tx))
+        {
+            AddOrderKeyParameters(detail, organizacion, prefijo, remito, clienteCodigo);
+            await using var rd = await detail.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct)) items.Add(new(Convert.ToInt32(rd.GetValue(0)), Convert.ToString(rd.GetValue(1))?.Trim() ?? string.Empty, Convert.ToDecimal(rd.GetValue(2)), Convert.ToDecimal(rd.GetValue(3)), Convert.ToDecimal(rd.GetValue(4)), Convert.ToDecimal(rd.GetValue(5))));
+        }
+        return new(organizacion, prefijo, remito, clienteCodigo, fecha, prefijo == 18, observa, items);
+    }
+
+    private static void AddOrderKeyParameters(SqlCommand cmd, int organizacion, int prefijo, int remito, int clienteCodigo)
+    {
+        cmd.Parameters.Add("@org", SqlDbType.Int).Value = organizacion;
+        cmd.Parameters.Add("@pref", SqlDbType.Int).Value = prefijo;
+        cmd.Parameters.Add("@remito", SqlDbType.Int).Value = remito;
+        cmd.Parameters.Add("@cliente", SqlDbType.Int).Value = clienteCodigo;
+    }
+
     public async Task<PedidoConsultaResponse> GetOrdersAsync(int? desde, int? hasta, string? vendedor, string? cliente, string? zona, int pagina, int tamanoPagina, CancellationToken ct)
     {
         pagina = Math.Max(1, pagina);
@@ -318,6 +548,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
                        r.FECHA, r.IMP_TOTAL, COALESCE(u.NOMBRE, r.PED_USR, '') AS VENDEDOR,
                        CASE WHEN r.PREF = 18 THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS FRIO,
                        COALESCE(d.FACTURA, '') AS FACTURA,
+                       COALESCE(r.ESTADO, '') AS ESTADO,
                        ROW_NUMBER() OVER (ORDER BY r.FECHA DESC, r.REMITO DESC) AS FILA,
                        COUNT(*) OVER () AS TOTAL
                 FROM dbo.STREMITOS r
@@ -342,7 +573,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
                   AND (@cliente IS NULL OR CONVERT(varchar(20),r.COD_CLIENTE) = @cliente OR c.NOMBRE LIKE '%' + @cliente + '%')
                   AND (@zona IS NULL OR c.ZONA = @zona)
             )
-            SELECT ORGANIZACION,PREF,REMITO,COD_CLIENTE,CLIENTE_NOMBRE,FECHA,IMP_TOTAL,VENDEDOR,FRIO,FACTURA,TOTAL
+            SELECT ORGANIZACION,PREF,REMITO,COD_CLIENTE,CLIENTE_NOMBRE,FECHA,IMP_TOTAL,VENDEDOR,FRIO,FACTURA,ESTADO,TOTAL
             FROM Pedidos
             WHERE FILA > @desdeFila AND FILA <= @hastaFila
             ORDER BY FILA
@@ -360,8 +591,8 @@ public sealed class SqlServerRepository(TenantContext tenant)
         var total = 0;
         while (await rd.ReadAsync(ct))
         {
-            result.Add(new(rd.GetInt32(0), rd.GetInt32(1), rd.GetInt32(2), rd.GetInt32(3), rd.IsDBNull(4) ? string.Empty : Convert.ToString(rd.GetValue(4)) ?? string.Empty, rd.IsDBNull(5) ? 0 : rd.GetInt32(5), rd.IsDBNull(6) ? 0 : Convert.ToDecimal(rd.GetValue(6)), rd.IsDBNull(7) ? string.Empty : rd.GetString(7).Trim(), rd.GetBoolean(8), rd.IsDBNull(9) ? string.Empty : Convert.ToString(rd.GetValue(9)) ?? string.Empty));
-            total = Convert.ToInt32(rd.GetValue(10));
+            result.Add(new(rd.GetInt32(0), rd.GetInt32(1), rd.GetInt32(2), rd.GetInt32(3), rd.IsDBNull(4) ? string.Empty : Convert.ToString(rd.GetValue(4)) ?? string.Empty, rd.IsDBNull(5) ? 0 : rd.GetInt32(5), rd.IsDBNull(6) ? 0 : Convert.ToDecimal(rd.GetValue(6)), rd.IsDBNull(7) ? string.Empty : rd.GetString(7).Trim(), rd.GetBoolean(8), rd.IsDBNull(9) ? string.Empty : Convert.ToString(rd.GetValue(9)) ?? string.Empty, rd.IsDBNull(10) ? string.Empty : Convert.ToString(rd.GetValue(10))?.Trim() ?? string.Empty));
+            total = Convert.ToInt32(rd.GetValue(11));
         }
         return new(result, total, pagina, tamanoPagina);
     }
@@ -382,6 +613,9 @@ public sealed class SqlServerRepository(TenantContext tenant)
                     WHEN EXISTS (SELECT 1 FROM dbo.STREMITOSDET
                                  WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
                                    AND LTRIM(RTRIM(ISNULL(FACTURA,'')))<>'') THEN 'billed'
+                    WHEN EXISTS (SELECT 1 FROM dbo.STREMITOS
+                                 WHERE ORGANIZACION=@org AND PREF=@pref AND REMITO=@remito AND COD_CLIENTE=@cliente
+                                   AND ISNULL(ESTADO,'')<>'R') THEN 'locked'
                     ELSE 'ok' END
                 """, cn, (SqlTransaction)tx);
             check.Parameters.Add("@org", SqlDbType.Int).Value = organizacion;

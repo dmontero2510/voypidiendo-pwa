@@ -268,6 +268,52 @@ app.MapGet("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteC
     return Results.Ok(await db.GetOrderDetailAsync(organizacion, prefijo, remito, clienteCodigo, vendedor, ct));
 }).RequireAuthorization(policy => policy.RequireRole("A", "P", "Q", "V"));
 
+app.MapPost("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}/editar", async (int organizacion, int prefijo, int remito, int clienteCodigo, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
+{
+    var vendedor = user.FindFirstValue("usuario") ?? string.Empty;
+    var result = await db.BeginOrderEditAsync(organizacion, prefijo, remito, clienteCodigo, vendedor, ct);
+    return result.Status switch
+    {
+        "ok" => Results.Ok(result.Pedido),
+        "billed" => Results.BadRequest(new { mensaje = "El pedido ya está facturado y no puede editarse." }),
+        "locked" => Results.Conflict(new { mensaje = "El pedido no está disponible para edición." }),
+        "forbidden" => Results.Forbid(),
+        _ => Results.NotFound(new { mensaje = "El pedido no existe." })
+    };
+}).RequireAuthorization(policy => policy.RequireRole("V"));
+
+app.MapPut("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}/editar", async (int organizacion, int prefijo, int remito, int clienteCodigo, PedidoRequest pedido, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
+{
+    var vendedor = user.FindFirstValue("usuario") ?? string.Empty;
+    pedido = pedido with { Organizacion = organizacion, ClienteCodigo = clienteCodigo, Usuario = vendedor, Frio = prefijo == 18 };
+    if (pedido.Items.Count == 0 || string.IsNullOrWhiteSpace(vendedor))
+        return Results.BadRequest(new { mensaje = "El pedido debe tener al menos un artículo." });
+    if (pedido.Items.Any(x => x.Cantidad <= 0 || x.Precio < 0 || x.ProductoCodigo <= 0 || string.IsNullOrWhiteSpace(x.Descripcion)))
+        return Results.BadRequest(new { mensaje = "Hay renglones inválidos." });
+    var result = await db.UpdateOrderAsync(organizacion, prefijo, remito, clienteCodigo, vendedor, pedido, ct);
+    return result.Status switch
+    {
+        "ok" => Results.Ok(result.Pedido),
+        "billed" => Results.BadRequest(new { mensaje = "El pedido ya está facturado y no puede editarse." }),
+        "locked" => Results.Conflict(new { mensaje = "La edición del pedido ya no está activa." }),
+        "forbidden" => Results.Forbid(),
+        _ => Results.NotFound(new { mensaje = "El pedido no existe." })
+    };
+}).RequireAuthorization(policy => policy.RequireRole("V"));
+
+app.MapPost("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}/cancelar-edicion", async (int organizacion, int prefijo, int remito, int clienteCodigo, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
+{
+    var vendedor = user.FindFirstValue("usuario") ?? string.Empty;
+    var status = await db.CancelOrderEditAsync(organizacion, prefijo, remito, clienteCodigo, vendedor, ct);
+    return status switch
+    {
+        "ok" => Results.Ok(new { mensaje = "Edición cancelada." }),
+        "billed" => Results.BadRequest(new { mensaje = "El pedido ya está facturado." }),
+        "forbidden" => Results.Forbid(),
+        _ => Results.NotFound(new { mensaje = "El pedido no existe." })
+    };
+}).RequireAuthorization(policy => policy.RequireRole("V"));
+
 app.MapDelete("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteCodigo:int}", async (int organizacion, int prefijo, int remito, int clienteCodigo, ClaimsPrincipal user, SqlServerRepository db, CancellationToken ct) =>
 {
     var vendedor = user.FindFirstValue("usuario") ?? string.Empty;
@@ -276,6 +322,7 @@ app.MapDelete("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clien
     {
         "ok" => Results.Ok(new { mensaje = "Pedido eliminado." }),
         "billed" => Results.BadRequest(new { mensaje = "El pedido ya está facturado y no puede eliminarse." }),
+        "locked" => Results.Conflict(new { mensaje = "El pedido está siendo editado y no puede eliminarse." }),
         "forbidden" => Results.Forbid(),
         _ => Results.NotFound(new { mensaje = "El pedido no existe." })
     };

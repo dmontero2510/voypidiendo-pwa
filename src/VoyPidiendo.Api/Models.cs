@@ -7,10 +7,11 @@ public sealed record SyncResponse(DateTimeOffset FechaServidor, IReadOnlyList<Cl
 public sealed record PedidoItemRequest(int ProductoCodigo, string Descripcion, decimal Cantidad, decimal Precio, decimal Alic);
 public sealed record PedidoRequest(int Organizacion, int ClienteCodigo, DateTimeOffset Fecha, bool Frio, string? Observacion, string Usuario, List<PedidoItemRequest> Items);
 public sealed record PedidoResponse(int Organizacion, int Prefijo, int Remito, decimal SubTotal, decimal Iva, decimal Total);
-public sealed record PedidoConsultaDto(int Organizacion, int Prefijo, int Remito, int ClienteCodigo, string ClienteNombre, int Fecha, decimal Total, string Vendedor, bool Frio, string Factura);
+public sealed record PedidoConsultaDto(int Organizacion, int Prefijo, int Remito, int ClienteCodigo, string ClienteNombre, int Fecha, decimal Total, string Vendedor, bool Frio, string Factura, string Estado);
 public sealed record PedidoConsultaResponse(IReadOnlyList<PedidoConsultaDto> Items, int Total, int Pagina, int TamanoPagina);
 public sealed record VendedorFiltroDto(string Usuario, string Nombre);
 public sealed record PedidoDetalleDto(int ArticuloCodigo, string Descripcion, decimal Cantidad, decimal Precio, decimal Alic, decimal Importe);
+public sealed record PedidoEdicionDto(int Organizacion, int Prefijo, int Remito, int ClienteCodigo, int Fecha, bool Frio, string Observacion, IReadOnlyList<PedidoDetalleDto> Items);
 public sealed record PedidoPdfLinea(int Codigo, decimal Cantidad, string Descripcion, decimal PrecioUnitario, decimal Importe);
 public sealed record PedidoPdfData(int Organizacion, int Prefijo, int Remito, int Fecha, int Hora, string Cliente, string Domicilio, string Localidad, string ClienteCuit, string ClienteTipoIva, string Vendedor, string Empresa, string EmpresaDireccion, string EmpresaCuit, string Comentario, decimal SubTotal, decimal Iva, decimal PercepcionAlicuota, decimal PercepcionIibb, decimal Total, IReadOnlyList<PedidoPdfLinea> Lineas);
 public sealed record DashboardCategoriaDto(string Etiqueta, decimal Total, int Pedidos);
