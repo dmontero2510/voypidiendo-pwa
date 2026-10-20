@@ -9,7 +9,7 @@
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=4">
   <link rel="stylesheet" href="search-results.css?v=4">
-  <link rel="stylesheet" href="admin.css?v=12">
+  <link rel="stylesheet" href="admin.css?v=13">
   <link rel="stylesheet" href="voyllegando-theme.css?v=10">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
@@ -116,6 +116,8 @@
       <div class="filters">
         <label>Desde<input id="trackingFrom" type="date"></label>
         <label>Hasta<input id="trackingTo" type="date"></label>
+        <label>Vendedor<select id="trackingSeller"><option value="">Todos</option></select></label>
+        <label data-feature="Zona">Zona<select id="trackingZone"><option value="">Todas</option></select></label>
         <button id="refreshTracking">Actualizar</button>
       </div>
       <div class="tracking-kpis"><div><span>En comercio</span><strong id="trackingActive">0</strong></div><div><span>Visitas</span><strong id="trackingCount">0</strong></div><div><span>Promedio</span><strong id="trackingAverage">0 min</strong></div></div>
@@ -135,7 +137,7 @@
         <button id="searchOrders">Consultar</button>
       </div>
       <div class="table-wrap orders-table-wrap">
-        <table class="orders-table"><thead><tr><th>Fecha</th><th>Org.</th><th>Pedido</th><th>Factura</th><th>Cliente</th><th>Tipo</th><th>Usuario</th><th>Total</th><th></th></tr></thead><tbody id="ordersList"></tbody></table>
+        <table class="orders-table"><thead><tr><th>Fecha</th><th>Pedido</th><th>Factura</th><th>Cliente</th><th>Tipo</th><th>Usuario</th><th>Total</th><th></th></tr></thead><tbody id="ordersList"></tbody></table>
       </div>
       <div class="orders-pagination"><button id="ordersPrevious" class="secondary" aria-label="Página anterior" title="Página anterior">‹</button><span id="ordersPage">1 / 1</span><button id="ordersNext" class="secondary" aria-label="Página siguiente" title="Página siguiente">›</button></div>
       <div class="total orders-page-total"><span>Total página</span><strong id="ordersTotal">$ 0,00</strong></div>
@@ -331,6 +333,6 @@
   <div id="toast" class="toast" role="status"></div>
   <div id="queryBusy" class="query-busy" hidden><div class="query-busy-box"><span class="query-spinner"></span><strong>Ejecutando consulta…</strong><small>Espere, puede demorar unos segundos.</small></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=51"></script>
+  <script src="app.js?v=52"></script>
 </body>
 </html>

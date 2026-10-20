@@ -189,8 +189,8 @@ app.MapPost("/api/visitas/salida", async (VisitaSalidaRequest request, ClaimsPri
     return visit is null ? Results.BadRequest(new { mensaje = "No hay una visita activa." }) : Results.Ok(visit);
 }).RequireAuthorization(policy => policy.RequireRole("V"));
 
-app.MapGet("/api/visitas", async (DateTime? desde, DateTime? hasta, SqlServerRepository db, CancellationToken ct) =>
-    Results.Ok(await db.GetVisitsAsync(desde, hasta, ct)))
+app.MapGet("/api/visitas", async (DateTime? desde, DateTime? hasta, string? vendedor, string? zona, SqlServerRepository db, CancellationToken ct) =>
+    Results.Ok(await db.GetVisitsAsync(desde, hasta, vendedor, zona, ct)))
     .RequireAuthorization(policy => policy.RequireRole("A", "P", "Q"));
 
 app.MapGet("/api/clientes/ubicaciones", async (SqlServerRepository db, CancellationToken ct) =>

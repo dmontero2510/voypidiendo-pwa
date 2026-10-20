@@ -14,7 +14,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
                v.FECHA_LLEGADA,v.FECHA_SALIDA,DATEDIFF(minute,v.FECHA_LLEGADA,ISNULL(v.FECHA_SALIDA,GETDATE())),
                ISNULL(v.LAT_SALIDA,v.LAT_LLEGADA),ISNULL(v.LON_SALIDA,v.LON_LLEGADA)
         FROM dbo.APP_VISITAS v
-        OUTER APPLY (SELECT TOP (1) NOMBRE,ZONA FROM dbo.VW_APP_CLIENTES vc WHERE vc.CODIGO=v.COD_CLIENTE ORDER BY vc.ORGANIZACION) c
+        OUTER APPLY (SELECT TOP (1) NOMBRE,ZONA FROM dbo.VW_APP_CLIENTES vc WHERE vc.ORGANIZACION=v.ORGANIZACION AND vc.CODIGO=v.COD_CLIENTE) c
         """;
 
     private SqlConnection CreateConnection() => new(tenant.ConnectionString);
@@ -76,13 +76,15 @@ public sealed class SqlServerRepository(TenantContext tenant)
         return result is null ? null : await GetVisitByIdAsync(Convert.ToInt32(result), ct);
     }
 
-    public async Task<IReadOnlyList<VisitaDto>> GetVisitsAsync(DateTime? from, DateTime? to, CancellationToken ct)
+    public async Task<IReadOnlyList<VisitaDto>> GetVisitsAsync(DateTime? from, DateTime? to, string? seller, string? zone, CancellationToken ct)
     {
         await using var cn = CreateConnection();
         await cn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(VisitSelect + " WHERE (@desde IS NULL OR v.FECHA_LLEGADA>=@desde) AND (@hasta IS NULL OR v.FECHA_LLEGADA<DATEADD(day,1,@hasta)) ORDER BY v.FECHA_LLEGADA DESC", cn);
+        await using var cmd = new SqlCommand(VisitSelect + " WHERE (@desde IS NULL OR v.FECHA_LLEGADA>=@desde) AND (@hasta IS NULL OR v.FECHA_LLEGADA<DATEADD(day,1,@hasta)) AND (@vendedor IS NULL OR v.USUARIO=@vendedor) AND (@zona IS NULL OR LTRIM(RTRIM(ISNULL(c.ZONA,'')))=@zona) ORDER BY v.FECHA_LLEGADA DESC", cn);
         cmd.Parameters.Add("@desde", SqlDbType.DateTime).Value = (object?)from ?? DBNull.Value;
         cmd.Parameters.Add("@hasta", SqlDbType.DateTime).Value = (object?)to ?? DBNull.Value;
+        cmd.Parameters.Add("@vendedor", SqlDbType.VarChar, 50).Value = string.IsNullOrWhiteSpace(seller) ? DBNull.Value : seller.Trim();
+        cmd.Parameters.Add("@zona", SqlDbType.VarChar, 100).Value = string.IsNullOrWhiteSpace(zone) ? DBNull.Value : zone.Trim();
         await using var rd = await cmd.ExecuteReaderAsync(ct);
         var visits = new List<VisitaDto>();
         while (await rd.ReadAsync(ct)) visits.Add(ReadVisit(rd));
