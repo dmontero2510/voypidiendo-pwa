@@ -1,4 +1,4 @@
-const CACHE = 'voypidiendo-pwa-v2';
+const CACHE = 'voypidiendo-pwa-v3';
 const SHELL = ['/', '/styles.css', '/search-results.css', '/admin.css', '/voyllegando-theme.css', '/app.js', '/icons/icon.svg'];
 
 self.addEventListener('install', event => {

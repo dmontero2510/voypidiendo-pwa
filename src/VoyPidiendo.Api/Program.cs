@@ -347,16 +347,20 @@ app.MapGet("/api/pedidos/{organizacion:int}/{prefijo:int}/{remito:int}/{clienteC
 app.MapPost("/api/pedidos", async (PedidoRequest pedido, ClaimsPrincipal user, SqlServerRepository db, TenantContext tenant, CancellationToken ct) =>
 {
     var frioHabilitado = !tenant.Funciones.TryGetValue("Frio", out var permiteFrio) || permiteFrio;
+    var offlineHabilitado = tenant.Funciones.TryGetValue("PedidosOffline", out var permiteOffline) && permiteOffline;
     pedido = pedido with
     {
         Usuario = user.FindFirstValue("usuario") ?? user.Identity?.Name ?? "APP",
-        Frio = frioHabilitado && pedido.Frio
+        Frio = frioHabilitado && pedido.Frio,
+        IdOrigenApp = offlineHabilitado ? pedido.IdOrigenApp?.Trim() : null
     };
     if (pedido.Organizacion <= 0 || pedido.ClienteCodigo <= 0 || pedido.Items.Count == 0 || string.IsNullOrWhiteSpace(pedido.Usuario))
         return Results.BadRequest(new { error = "Pedido incompleto" });
     if (pedido.Items.Any(x => x.Cantidad <= 0 || x.Precio < 0 ||
                               x.ProductoCodigo <= 0 || string.IsNullOrWhiteSpace(x.Descripcion)))
         return Results.BadRequest(new { error = "Hay renglones inválidos" });
+    if (pedido.IdOrigenApp?.Length > 50)
+        return Results.BadRequest(new { error = "Identificador de origen inválido" });
 
     var result = await db.SaveOrderAsync(pedido, ct);
     return Results.Ok(result);

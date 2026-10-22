@@ -207,6 +207,25 @@ public sealed class SqlServerRepository(TenantContext tenant)
             if (usuario.Length > 10) usuario = usuario[..10];
             var observa = string.IsNullOrWhiteSpace(pedido.Observacion) ? null : pedido.Observacion.Trim();
             if (observa?.Length > 50) observa = observa[..50];
+            var idOrigen = string.IsNullOrWhiteSpace(pedido.IdOrigenApp) ? null : pedido.IdOrigenApp.Trim();
+            if (idOrigen is not null)
+            {
+                await using var existing = new SqlCommand("""
+                    SELECT ORGANIZACION,PREF,REMITO,ISNULL(SUB_TOTAL,0),ISNULL(IMP_RESP,0),ISNULL(IMP_TOTAL,0)
+                    FROM dbo.STREMITOS WITH (UPDLOCK,HOLDLOCK)
+                    WHERE ID_ORIGEN_APP=@idOrigen AND PED_USR=@usuario
+                    """, cn, tx);
+                existing.Parameters.Add("@idOrigen", SqlDbType.VarChar, 50).Value = idOrigen;
+                existing.Parameters.Add("@usuario", SqlDbType.VarChar, 10).Value = usuario;
+                await using var existingReader = await existing.ExecuteReaderAsync(ct);
+                if (await existingReader.ReadAsync(ct))
+                {
+                    var saved = new PedidoResponse(existingReader.GetInt32(0), existingReader.GetInt32(1), existingReader.GetInt32(2), Convert.ToDecimal(existingReader.GetValue(3)), Convert.ToDecimal(existingReader.GetValue(4)), Convert.ToDecimal(existingReader.GetValue(5)));
+                    await existingReader.CloseAsync();
+                    await tx.CommitAsync(ct);
+                    return saved;
+                }
+            }
 
             await using var nextNumber = new SqlCommand("""
                 SELECT ISNULL(MAX(REMITO), 0) + 1
@@ -229,7 +248,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
             var ivaPedido = calculated.Sum(x => x.Iva);
             var totalPedido = calculated.Sum(x => x.Total);
 
-            const string headerSql = """
+            var headerSql = idOrigen is null ? """
                 INSERT INTO dbo.STREMITOS
                 (ORGANIZACION, PREF, REMITO, COD_CLIENTE, COD_VEND, OBSERVA, ESTADO, FECHA,
                  SUB_TOTAL, IMP_RESP, IMP_TOTAL, AUD_FEC, AUD_HOR, AUD_USR, TIPO_REMITO,
@@ -239,6 +258,16 @@ public sealed class SqlServerRepository(TenantContext tenant)
                 (@organizacion, @pref, @remito, @cliente, 2, @observa, 'R', @fecha,
                  @subtotal, @iva, @total, @fecha, @hora, 'APP', 'VE',
                  'DEP', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @usuario)
+                """ : """
+                INSERT INTO dbo.STREMITOS
+                (ORGANIZACION, PREF, REMITO, COD_CLIENTE, COD_VEND, OBSERVA, ESTADO, FECHA,
+                 SUB_TOTAL, IMP_RESP, IMP_TOTAL, AUD_FEC, AUD_HOR, AUD_USR, TIPO_REMITO,
+                 DESTINO, CODBARRA, COD_ARTICULO, NROREP, MARCA, DESCRIPCION, CANTIDAD,
+                 PREUNI, ALIC, ALICE, RUBSTK, LISTA, PED_USR, ID_ORIGEN_APP)
+                VALUES
+                (@organizacion, @pref, @remito, @cliente, 2, @observa, 'R', @fecha,
+                 @subtotal, @iva, @total, @fecha, @hora, 'APP', 'VE',
+                 'DEP', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @usuario, @idOrigen)
                 """;
             await using (var header = new SqlCommand(headerSql, cn, tx))
             {
@@ -253,6 +282,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
                 header.Parameters.Add("@iva", SqlDbType.Float).Value = ivaPedido;
                 header.Parameters.Add("@total", SqlDbType.Float).Value = totalPedido;
                 header.Parameters.Add("@usuario", SqlDbType.VarChar, 10).Value = usuario;
+                if (idOrigen is not null) header.Parameters.Add("@idOrigen", SqlDbType.VarChar, 50).Value = idOrigen;
                 await header.ExecuteNonQueryAsync(ct);
             }
 

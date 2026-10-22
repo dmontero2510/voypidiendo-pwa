@@ -1,0 +1,20 @@
+/* VoyPidiendo PWA - identificador idempotente para pedidos offline. */
+IF COL_LENGTH('dbo.STREMITOS', 'ID_ORIGEN_APP') IS NULL
+BEGIN
+    ALTER TABLE dbo.STREMITOS ADD ID_ORIGEN_APP varchar(50) NULL;
+END;
+GO
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.STREMITOS')
+      AND name = 'UX_STREMITOS_ID_ORIGEN_APP'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_STREMITOS_ID_ORIGEN_APP
+        ON dbo.STREMITOS(ID_ORIGEN_APP)
+        WHERE ID_ORIGEN_APP IS NOT NULL;
+END;
+GO

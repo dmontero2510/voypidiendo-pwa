@@ -9,6 +9,24 @@
 */
 
 SET NOCOUNT ON;
+
+/* Identificador idempotente para pedidos creados sin conexión. */
+IF COL_LENGTH('dbo.STREMITOS', 'ID_ORIGEN_APP') IS NULL
+BEGIN
+    ALTER TABLE dbo.STREMITOS ADD ID_ORIGEN_APP varchar(50) NULL;
+END;
+
+IF NOT EXISTS
+(
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.STREMITOS')
+      AND name = 'UX_STREMITOS_ID_ORIGEN_APP'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_STREMITOS_ID_ORIGEN_APP
+        ON dbo.STREMITOS(ID_ORIGEN_APP)
+        WHERE ID_ORIGEN_APP IS NOT NULL;
+END;
 GO
 
 IF OBJECT_ID('dbo.APP_USUARIOS','U') IS NULL

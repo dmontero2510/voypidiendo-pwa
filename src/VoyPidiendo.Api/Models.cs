@@ -5,7 +5,7 @@ public sealed record ClientePercepcionDto(decimal Alicuota);
 public sealed record ProductoDto(int Organizacion, int Codigo, string Descripcion, decimal Precio, decimal Alic, string? Rubro, bool Frio);
 public sealed record SyncResponse(DateTimeOffset FechaServidor, IReadOnlyList<ClienteDto> Clientes, IReadOnlyList<ProductoDto> Productos);
 public sealed record PedidoItemRequest(int ProductoCodigo, string Descripcion, decimal Cantidad, decimal Precio, decimal Alic);
-public sealed record PedidoRequest(int Organizacion, int ClienteCodigo, DateTimeOffset Fecha, bool Frio, string? Observacion, string Usuario, List<PedidoItemRequest> Items);
+public sealed record PedidoRequest(int Organizacion, int ClienteCodigo, DateTimeOffset Fecha, bool Frio, string? Observacion, string Usuario, List<PedidoItemRequest> Items, string? IdOrigenApp = null);
 public sealed record PedidoResponse(int Organizacion, int Prefijo, int Remito, decimal SubTotal, decimal Iva, decimal Total);
 public sealed record PedidoConsultaDto(int Organizacion, int Prefijo, int Remito, int ClienteCodigo, string ClienteNombre, int Fecha, decimal Total, string Vendedor, bool Frio, string Factura, string Estado);
 public sealed record PedidoConsultaResponse(IReadOnlyList<PedidoConsultaDto> Items, int Total, int Pagina, int TamanoPagina);
