@@ -174,6 +174,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
         await using (var cmd = new SqlCommand("""
             SELECT ORGANIZACION, CODART, DESCRIPCION, PRECIO, ALIC, RUBRO, FRIO
             FROM dbo.VW_APP_ARTICULOS
+            WHERE ESTADO = 'A'
             ORDER BY DESCRIPCION
             """, cn))
         await using (var rd = await cmd.ExecuteReaderAsync(ct))

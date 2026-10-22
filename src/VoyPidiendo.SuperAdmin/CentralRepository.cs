@@ -177,7 +177,7 @@ public sealed class CentralRepository(
             ["APP_CLIENTES_UBICACION"] = ("Tabla de la aplicación", ["ORGANIZACION","COD_CLIENTE","LATITUD","LONGITUD","FECHA_REGISTRO","USUARIO"]),
             ["APP_TITULO"] = ("Tabla de configuración", ["TITULO","SUBTITULO","DIRECCION","CUIT","COMENTARIO"]),
             ["VW_APP_CLIENTES"] = ("Vista requerida", ["ORGANIZACION","CODIGO","NOMBRE","DIRECCION","ZONA","CUIT","TIPOIVA","IVA"]),
-            ["VW_APP_ARTICULOS"] = ("Vista requerida", ["ORGANIZACION","CODART","DESCRIPCION","PRECIO","ALIC","RUBRO","FRIO","MARCA"]),
+            ["VW_APP_ARTICULOS"] = ("Vista requerida", ["ORGANIZACION","CODART","DESCRIPCION","PRECIO","ALIC","RUBRO","FRIO","MARCA","ESTADO"]),
             ["FUCLIENTES"] = ("Tabla de clientes", ["ORGANIZACION","COD_CLIENTE","NOMBRE","IVA","CUIT","DIRECCION","POSTAL","PCIA","LOCALI","CELULAR","EMAIL","PAGINAWEB","OBSERVACIONES","ZONA","CAEDOC","EXENTO"]),
             ["GSTIPOIVA"] = ("Tabla de validación", []),
             ["EXPROVINCIA"] = ("Tabla de validación", []),
