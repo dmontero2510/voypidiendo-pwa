@@ -725,7 +725,8 @@ public sealed class SqlServerRepository(TenantContext tenant)
             await ReadLookupAsync(cn, "EXPROVINCIA", ["PCIA", "CODIGO", "COD_PROV", "COD_PROVINCIA"], ["PROVINCIA", "DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
             await ReadLookupAsync(cn, "EXLOCALIDAD", ["LOCALI", "CODIGO", "COD_LOC", "COD_LOCALIDAD"], ["LOCALIDAD", "DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], ["PCIA", "PROVINCIA", "COD_PROV", "COD_PROVINCIA"], ct),
             await ReadLookupAsync(cn, "GSZONA", ["ZONA", "CODIGO", "COD_ZONA"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
-            await ReadLookupAsync(cn, "TATIPDOC", ["CAEDOC", "TIPDOC", "TIPODOC", "CODIGO", "COD_DOC"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct));
+            await ReadLookupAsync(cn, "TATIPDOC", ["CAEDOC", "TIPDOC", "TIPODOC", "CODIGO", "COD_DOC"], ["DETALLE", "DESCRIP", "DESCRIPCION", "NOMBRE", "DENOMINACION"], null, ct),
+            await ReadClientTypesAsync(cn, ct));
     }
 
     public async Task<IReadOnlyList<ClienteGestionDto>> SearchManagedClientsAsync(string? texto, CancellationToken ct)
@@ -738,7 +739,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
         await using var cmd = new SqlCommand("""
             SELECT TOP (30) ORGANIZACION,COD_CLIENTE,ISNULL(NOMBRE,''),ISNULL(IVA,''),ISNULL(CUIT,''),
                    ISNULL(DIRECCION,''),ISNULL(POSTAL,''),ISNULL(PCIA,''),ISNULL(LOCALI,''),ISNULL(CELULAR,''),
-                   ISNULL(EMAIL,''),ISNULL(PAGINAWEB,''),ISNULL(OBSERVACIONES,''),ISNULL(ZONA,0),ISNULL(CAEDOC,''),ISNULL(EXENTO,'')
+                   ISNULL(EMAIL,''),ISNULL(PAGINAWEB,''),ISNULL(OBSERVACIONES,''),ISNULL(ZONA,0),ISNULL(CAEDOC,''),ISNULL(EXENTO,''),ISNULL(TIPCLI,'A')
             FROM dbo.FUCLIENTES
             WHERE ORGANIZACION=1
               AND ((@esCodigo=1 AND COD_CLIENTE=@codigo) OR (@esCodigo=0 AND NOMBRE LIKE '%' + @texto + '%'))
@@ -764,6 +765,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
         var locality = DefaultText(request.Localidad, "094");
         var documentType = DefaultText(request.TipoDocumento, "99");
         var exempt = DefaultText(request.Exento, "No");
+        var clientType = DefaultText(request.TipoCliente, "A");
         var zone = request.Zona ?? 10;
         if (name.Length == 0 || name.Length > 120) throw new InvalidOperationException("Ingrese el nombre del cliente.");
         if (address.Length == 0 || address.Length > 255) throw new InvalidOperationException("Ingrese el domicilio del cliente.");
@@ -777,6 +779,7 @@ public sealed class SqlServerRepository(TenantContext tenant)
         if (!catalogs.Localidades.Any(x => x.Codigo.Equals(locality, StringComparison.OrdinalIgnoreCase) && (string.IsNullOrWhiteSpace(x.Padre) || x.Padre.Equals(province, StringComparison.OrdinalIgnoreCase)))) throw new InvalidOperationException("Seleccione una localidad válida para la provincia.");
         if (!catalogs.Zonas.Any(x => x.Codigo == zone.ToString())) throw new InvalidOperationException("Seleccione una zona válida.");
         if (!catalogs.TiposDocumento.Any(x => x.Codigo.Equals(documentType, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Seleccione un tipo de documento válido.");
+        if (!catalogs.TiposCliente.Any(x => x.Codigo.Equals(clientType, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Seleccione un tipo de cliente válido.");
 
         await using var cn = CreateConnection();
         await cn.OpenAsync(ct);
@@ -804,10 +807,10 @@ public sealed class SqlServerRepository(TenantContext tenant)
                      AUD_FEC,AUD_HOR,AUD_USR,CAEDOC,EXENTO)
                     VALUES
                     (1,@codigo,@nombre,@iva,@cuit,@direccion,@postal,@pcia,@locali,@celular,@email,@web,
-                     0,CONVERT(int,CONVERT(char(8),GETDATE(),112)),0,@observaciones,'1','1','1',0,@zona,1,1,1,
+                     0,CONVERT(int,CONVERT(char(8),GETDATE(),112)),0,@observaciones,'1','1',@tipcli,0,@zona,1,1,1,
                      CONVERT(int,CONVERT(char(8),GETDATE(),112)),CONVERT(int,REPLACE(CONVERT(char(8),GETDATE(),108),':','')),@usuario,@documento,@exento)
                     """, cn, tx);
-                AddManagedClientParameters(insert, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt);
+                AddManagedClientParameters(insert, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt, clientType);
                 await insert.ExecuteNonQueryAsync(ct);
             }
             else
@@ -815,21 +818,21 @@ public sealed class SqlServerRepository(TenantContext tenant)
                 await using var update = new SqlCommand("""
                     UPDATE dbo.FUCLIENTES SET NOMBRE=@nombre,IVA=@iva,CUIT=@cuit,DIRECCION=@direccion,POSTAL=@postal,
                         PCIA=@pcia,LOCALI=@locali,CELULAR=@celular,EMAIL=@email,PAGINAWEB=@web,OBSERVACIONES=@observaciones,
-                        ZONA=@zona,CAEDOC=@documento,EXENTO=@exento,
+                        ZONA=@zona,CAEDOC=@documento,EXENTO=@exento,TIPCLI=@tipcli,
                         AUD_FEC=CONVERT(int,CONVERT(char(8),GETDATE(),112)),
                         AUD_HOR=CONVERT(int,REPLACE(CONVERT(char(8),GETDATE(),108),':','')),AUD_USR=@usuario
                     WHERE ORGANIZACION=1 AND COD_CLIENTE=@codigo
                     """, cn, tx);
-                AddManagedClientParameters(update, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt);
+                AddManagedClientParameters(update, code.Value, name, iva, cuit, address, postal, province, locality, request, zone, username, documentType, exempt, clientType);
                 if (await update.ExecuteNonQueryAsync(ct) == 0) throw new InvalidOperationException("El cliente que intenta modificar ya no existe.");
             }
             tx.Commit();
-            return new(1, code.Value, name, iva, cuit, address, postal, province, locality, request.Celular?.Trim() ?? string.Empty, request.Email?.Trim() ?? string.Empty, request.PaginaWeb?.Trim() ?? string.Empty, request.Observaciones?.Trim() ?? string.Empty, zone, documentType, exempt);
+            return new(1, code.Value, name, iva, cuit, address, postal, province, locality, request.Celular?.Trim() ?? string.Empty, request.Email?.Trim() ?? string.Empty, request.PaginaWeb?.Trim() ?? string.Empty, request.Observaciones?.Trim() ?? string.Empty, zone, documentType, exempt, clientType);
         }
         catch { tx.Rollback(); throw; }
     }
 
-    private static void AddManagedClientParameters(SqlCommand cmd, int code, string name, string iva, string cuit, string address, string postal, string province, string locality, ClienteGestionRequest request, int zone, string username, string documentType, string exempt)
+    private static void AddManagedClientParameters(SqlCommand cmd, int code, string name, string iva, string cuit, string address, string postal, string province, string locality, ClienteGestionRequest request, int zone, string username, string documentType, string exempt, string clientType)
     {
         cmd.Parameters.Add("@codigo", SqlDbType.Int).Value = code;
         cmd.Parameters.Add("@nombre", SqlDbType.VarChar, 120).Value = name;
@@ -847,10 +850,20 @@ public sealed class SqlServerRepository(TenantContext tenant)
         cmd.Parameters.Add("@usuario", SqlDbType.VarChar, 10).Value = string.IsNullOrWhiteSpace(username) ? "APP" : username.Trim()[..Math.Min(10, username.Trim().Length)];
         cmd.Parameters.Add("@documento", SqlDbType.VarChar, 2).Value = documentType;
         cmd.Parameters.Add("@exento", SqlDbType.VarChar, 2).Value = exempt;
+        cmd.Parameters.Add("@tipcli", SqlDbType.VarChar, 2).Value = clientType;
     }
 
     private static ClienteGestionDto ReadManagedClient(SqlDataReader rd) => new(
-        Convert.ToInt32(rd.GetValue(0)), Convert.ToInt32(rd.GetValue(1)), rd.GetString(2).Trim(), rd.GetString(3).Trim(), rd.GetString(4).Trim(), rd.GetString(5).Trim(), rd.GetString(6).Trim(), rd.GetString(7).Trim(), rd.GetString(8).Trim(), rd.GetString(9).Trim(), rd.GetString(10).Trim(), rd.GetString(11).Trim(), rd.GetString(12).Trim(), Convert.ToInt32(rd.GetValue(13)), rd.GetString(14).Trim(), rd.GetString(15).Trim());
+        Convert.ToInt32(rd.GetValue(0)), Convert.ToInt32(rd.GetValue(1)), rd.GetString(2).Trim(), rd.GetString(3).Trim(), rd.GetString(4).Trim(), rd.GetString(5).Trim(), rd.GetString(6).Trim(), rd.GetString(7).Trim(), rd.GetString(8).Trim(), rd.GetString(9).Trim(), rd.GetString(10).Trim(), rd.GetString(11).Trim(), rd.GetString(12).Trim(), Convert.ToInt32(rd.GetValue(13)), rd.GetString(14).Trim(), rd.GetString(15).Trim(), rd.GetString(16).Trim());
+
+    private static async Task<IReadOnlyList<OpcionClienteDto>> ReadClientTypesAsync(SqlConnection cn, CancellationToken ct)
+    {
+        await using var cmd = new SqlCommand("SELECT CONVERT(varchar(50),TIPCLI),ISNULL(CONVERT(varchar(200),DETALLE),CONVERT(varchar(50),TIPCLI)) FROM dbo.GSTIPOCLI WHERE ORGANIZACION=1 ORDER BY DETALLE", cn);
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        var result = new List<OpcionClienteDto>();
+        while (await rd.ReadAsync(ct)) result.Add(new(rd.GetString(0).Trim(), rd.GetString(1).Trim()));
+        return result;
+    }
 
     private static string DefaultText(string? value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
