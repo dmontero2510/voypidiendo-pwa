@@ -172,9 +172,9 @@ public sealed class SqlServerRepository(TenantContext tenant)
                     rd.IsDBNull(6) ? null : Convert.ToString(rd.GetValue(6))));
 
         await using (var cmd = new SqlCommand("""
-            SELECT ORGANIZACION, CODART, DESCRIPCION, PRECIO, ALIC, RUBRO, FRIO
+            SELECT ORGANIZACION, CODART, DESCRIPCION, PRECIO, ALIC, RUBRO, FRIO, ESTADO
             FROM dbo.VW_APP_ARTICULOS
-            WHERE ESTADO = 'A'
+            WHERE UPPER(LTRIM(RTRIM(ISNULL(ESTADO, '')))) = 'A'
             ORDER BY DESCRIPCION
             """, cn))
         await using (var rd = await cmd.ExecuteReaderAsync(ct))
@@ -186,7 +186,8 @@ public sealed class SqlServerRepository(TenantContext tenant)
                     Convert.ToDecimal(rd.GetValue(3)),
                     Convert.ToDecimal(rd.GetValue(4)),
                     rd.IsDBNull(5) ? null : Convert.ToString(rd.GetValue(5)),
-                    !rd.IsDBNull(6) && string.Equals(Convert.ToString(rd.GetValue(6))?.Trim(), "SI", StringComparison.OrdinalIgnoreCase)));
+                    !rd.IsDBNull(6) && string.Equals(Convert.ToString(rd.GetValue(6))?.Trim(), "SI", StringComparison.OrdinalIgnoreCase),
+                    !rd.IsDBNull(7) && string.Equals(Convert.ToString(rd.GetValue(7))?.Trim(), "A", StringComparison.OrdinalIgnoreCase)));
 
         return new(DateTimeOffset.UtcNow, clientes, productos);
     }

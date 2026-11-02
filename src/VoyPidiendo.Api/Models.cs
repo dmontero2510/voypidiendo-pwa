@@ -2,7 +2,7 @@ namespace VoyPidiendo.Api;
 
 public sealed record ClienteDto(int Organizacion, int Codigo, string Nombre, string? Telefono, string? Cuit, string? TipoIva, string? Zona);
 public sealed record ClientePercepcionDto(decimal Alicuota);
-public sealed record ProductoDto(int Organizacion, int Codigo, string Descripcion, decimal Precio, decimal Alic, string? Rubro, bool Frio);
+public sealed record ProductoDto(int Organizacion, int Codigo, string Descripcion, decimal Precio, decimal Alic, string? Rubro, bool Frio, bool Activo);
 public sealed record SyncResponse(DateTimeOffset FechaServidor, IReadOnlyList<ClienteDto> Clientes, IReadOnlyList<ProductoDto> Productos);
 public sealed record PedidoItemRequest(int ProductoCodigo, string Descripcion, decimal Cantidad, decimal Precio, decimal Alic);
 public sealed record PedidoRequest(int Organizacion, int ClienteCodigo, DateTimeOffset Fecha, bool Frio, string? Observacion, string Usuario, List<PedidoItemRequest> Items, string? IdOrigenApp = null);
