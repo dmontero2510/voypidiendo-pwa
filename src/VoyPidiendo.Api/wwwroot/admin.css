@@ -99,6 +99,7 @@
   .dashboard-seller-filter { width: 100%; margin-left: 0; }
 }
 .order-row-actions{display:flex;gap:6px;align-items:center;white-space:nowrap}.order-row-actions button{padding:8px 12px}
+#adminTracking table th,#adminTracking table td{text-align:left}
 #adminOrders .orders-table thead th{text-align:center}
 #adminOrders .orders-table tbody td{text-align:left}
 #adminOrders .orders-table tbody .order-list-number,#adminOrders .orders-table tbody .order-list-total{text-align:right}
