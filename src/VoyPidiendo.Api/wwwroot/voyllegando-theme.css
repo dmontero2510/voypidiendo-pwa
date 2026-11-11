@@ -41,6 +41,7 @@ body { background: var(--vp-page); color: var(--vp-text); }
 }
 .page > header h1 { font-size: 30px; letter-spacing: .7px; color: #fff; }
 .page > header .eyebrow { color: var(--vp-brand); }
+.build-info { margin: -10px 0 9px; color: var(--vp-muted); text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .2px; }
 .card { border-color: var(--vp-border); box-shadow: 0 8px 28px rgba(13, 13, 39, .08); }
 label { color: #555b6c; }
 input, select { border-color: #cfd6de; color: var(--vp-text); transition: border-color .15s, box-shadow .15s; }

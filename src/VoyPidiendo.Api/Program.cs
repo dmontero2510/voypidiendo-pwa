@@ -110,6 +110,12 @@ app.MapGet("/api/configuracion/empresa", (TenantContext tenant) => Results.Ok(ne
     tenant.ColorPrincipal, tenant.ColorSecundario, tenant.Funciones,
     tenant.PercepIibb, tenant.Subtotales))).AllowAnonymous();
 
+app.MapGet("/api/version", () => Results.Ok(new
+{
+    version = BuildInfo.Version,
+    compilada = BuildInfo.CompiledAt
+})).AllowAnonymous();
+
 app.MapPost("/api/auth/login", async (LoginRequest request, AuthService auth, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Usuario) || string.IsNullOrWhiteSpace(request.Clave)) return Results.BadRequest(new { mensaje = "Ingrese usuario y clave." });

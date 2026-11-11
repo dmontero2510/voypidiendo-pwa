@@ -11,4 +11,18 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <VoyPidiendoBuildDate>$([System.DateTime]::UtcNow.AddHours(-3).ToString('dd/MM/yyyy HH:mm'))</VoyPidiendoBuildDate>
+      <VoyPidiendoBuildVersion>$([System.DateTime]::UtcNow.AddHours(-3).ToString('yyyy.MM.dd.HHmm'))</VoyPidiendoBuildVersion>
+      <VoyPidiendoBuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</VoyPidiendoBuildInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(VoyPidiendoBuildInfoFile)"
+                      Lines="namespace VoyPidiendo.Api%3B internal static class BuildInfo { internal const string Version = &quot;$(VoyPidiendoBuildVersion)&quot;%3B internal const string CompiledAt = &quot;$(VoyPidiendoBuildDate)&quot;%3B }"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+    <ItemGroup>
+      <Compile Include="$(VoyPidiendoBuildInfoFile)" />
+    </ItemGroup>
+  </Target>
 </Project>
